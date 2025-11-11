@@ -8,14 +8,14 @@ import { getDatabase } from "firebase/database"
 
 // Firebase configuration - Replace with your actual config
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "demo-key",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "studypal-demo.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "studypal-demo",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "studypal-demo.appspot.com",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:123456789:web:abcdef123456",
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://studypal-demo.firebaseio.com",
-}
+  apiKey: "AIzaSyCGCtP5oChWvXox4q2094VjxFCFO_NdHGI",
+  authDomain: "construct-36728.firebaseapp.com",
+  projectId: "construct-36728",
+  storageBucket: "construct-36728.firebasestorage.app",
+  messagingSenderId: "233523505673",
+  appId: "1:233523505673:web:e33d871b87d3b248dae6d8",
+  measurementId: "G-QGW8V4Q93E"
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)

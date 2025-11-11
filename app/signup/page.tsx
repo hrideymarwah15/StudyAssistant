@@ -4,8 +4,56 @@ import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Mail, Lock, User } from "lucide-react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+
+const signupSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+})
+
+type SignupFormData = z.infer<typeof signupSchema>
 
 export default function SignupPage() {
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
+  })
+
+  const onSubmit = async (data: SignupFormData) => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create account")
+      }
+
+      router.push("/materials")
+    } catch (err: any) {
+      setError(err.message || "Failed to create account. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
@@ -16,17 +64,26 @@ export default function SignupPage() {
             <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Join StudyPal</h1>
             <p className="text-muted-foreground mb-8">Start mastering your studies today</p>
 
-            <form className="space-y-4">
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Full Name</label>
                 <div className="relative">
                   <User className="w-5 h-5 absolute left-3 top-3 text-muted-foreground" />
                   <input
+                    {...register("name")}
                     type="text"
                     placeholder="John Doe"
                     className="w-full pl-10 pr-4 py-2 rounded-lg bg-background border border-border focus:border-primary outline-none transition-colors"
+                    disabled={isLoading}
                   />
                 </div>
+                {errors.name && <p className="mt-1 text-sm text-destructive">{errors.name.message}</p>}
               </div>
 
               <div>
@@ -34,11 +91,14 @@ export default function SignupPage() {
                 <div className="relative">
                   <Mail className="w-5 h-5 absolute left-3 top-3 text-muted-foreground" />
                   <input
+                    {...register("email")}
                     type="email"
                     placeholder="you@example.com"
                     className="w-full pl-10 pr-4 py-2 rounded-lg bg-background border border-border focus:border-primary outline-none transition-colors"
+                    disabled={isLoading}
                   />
                 </div>
+                {errors.email && <p className="mt-1 text-sm text-destructive">{errors.email.message}</p>}
               </div>
 
               <div>
@@ -46,14 +106,19 @@ export default function SignupPage() {
                 <div className="relative">
                   <Lock className="w-5 h-5 absolute left-3 top-3 text-muted-foreground" />
                   <input
+                    {...register("password")}
                     type="password"
                     placeholder="••••••••"
                     className="w-full pl-10 pr-4 py-2 rounded-lg bg-background border border-border focus:border-primary outline-none transition-colors"
+                    disabled={isLoading}
                   />
                 </div>
+                {errors.password && <p className="mt-1 text-sm text-destructive">{errors.password.message}</p>}
               </div>
 
-              <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Create Account</Button>
+              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" disabled={isLoading}>
+                {isLoading ? "Creating Account..." : "Create Account"}
+              </Button>
             </form>
 
             <div className="relative my-6">

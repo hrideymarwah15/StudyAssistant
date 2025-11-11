@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
+import { useFrame } from "@react-three/fiber"
 import dynamic from "next/dynamic"
 import * as THREE from "three"
 
@@ -10,22 +11,13 @@ const OrbitControls = dynamic(() => import("@react-three/drei").then((m) => m.Or
 function FloatingNotebook() {
   const meshRef = useRef<any>(null)
 
-  useEffect(() => {
-    if (!meshRef.current) return
-
-    let animationId: number
-    const animate = () => {
-      if (meshRef.current) {
-        meshRef.current.rotation.x += 0.001
-        meshRef.current.rotation.z += 0.0015
-        meshRef.current.position.y += Math.sin(Date.now() * 0.001) * 0.0005
-      }
-      animationId = requestAnimationFrame(animate)
+  useFrame(() => {
+    if (meshRef.current) {
+      meshRef.current.rotation.x += 0.001
+      meshRef.current.rotation.z += 0.0015
+      meshRef.current.position.y += Math.sin(Date.now() * 0.001) * 0.0005
     }
-
-    animate()
-    return () => cancelAnimationFrame(animationId)
-  }, [])
+  })
 
   return (
     <mesh ref={meshRef} position={[0, 0, 0]}>
@@ -44,21 +36,12 @@ function FloatingNotebook() {
 function FloatingCard() {
   const meshRef = useRef<any>(null)
 
-  useEffect(() => {
-    if (!meshRef.current) return
-
-    let animationId: number
-    const animate = () => {
-      if (meshRef.current) {
-        meshRef.current.rotation.y += 0.008
-        meshRef.current.position.y = Math.sin(Date.now() * 0.0008) * 1.5
-      }
-      animationId = requestAnimationFrame(animate)
+  useFrame(() => {
+    if (meshRef.current) {
+      meshRef.current.rotation.y += 0.008
+      meshRef.current.position.y = Math.sin(Date.now() * 0.0008) * 1.5
     }
-
-    animate()
-    return () => cancelAnimationFrame(animationId)
-  }, [])
+  })
 
   return (
     <mesh ref={meshRef} position={[3, 0, 0]}>
@@ -77,21 +60,12 @@ function FloatingCard() {
 function ProgressOrb() {
   const meshRef = useRef<any>(null)
 
-  useEffect(() => {
-    if (!meshRef.current) return
-
-    let animationId: number
-    const animate = () => {
-      if (meshRef.current) {
-        meshRef.current.rotation.x += 0.003
-        meshRef.current.rotation.y += 0.005
-      }
-      animationId = requestAnimationFrame(animate)
+  useFrame(() => {
+    if (meshRef.current) {
+      meshRef.current.rotation.x += 0.003
+      meshRef.current.rotation.y += 0.005
     }
-
-    animate()
-    return () => cancelAnimationFrame(animationId)
-  }, [])
+  })
 
   return (
     <mesh ref={meshRef} position={[-3, 0.5, 0]}>
@@ -110,7 +84,6 @@ function ProgressOrb() {
 
 function ParticleField() {
   const pointsRef = useRef<THREE.Points>(null)
-  const positionAttributeRef = useRef<THREE.BufferAttribute | null>(null)
 
   useEffect(() => {
     if (!pointsRef.current) return
@@ -125,31 +98,24 @@ function ParticleField() {
     }
 
     const geometry = new THREE.BufferGeometry()
-    const positionAttribute = new THREE.BufferAttribute(positions, 3)
-    geometry.setAttribute("position", positionAttribute)
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3))
     pointsRef.current.geometry = geometry
-    positionAttributeRef.current = positionAttribute
-
-    let animationId: number
-    const animate = () => {
-      if (!positionAttributeRef.current) return
-
-      const positions = positionAttributeRef.current.array as Float32Array
-
-      for (let i = 1; i < positions.length; i += 3) {
-        positions[i] += 0.01
-        if (positions[i] > 10) {
-          positions[i] = -10
-        }
-      }
-      positionAttributeRef.current.needsUpdate = true
-
-      animationId = requestAnimationFrame(animate)
-    }
-
-    animate()
-    return () => cancelAnimationFrame(animationId)
   }, [])
+
+  useFrame(() => {
+    if (!pointsRef.current || !pointsRef.current.geometry || !pointsRef.current.geometry.attributes.position) return
+
+    const positionAttribute = pointsRef.current.geometry.attributes.position as THREE.BufferAttribute
+    const positions = positionAttribute.array as Float32Array
+
+    for (let i = 1; i < positions.length; i += 3) {
+      positions[i] += 0.01
+      if (positions[i] > 10) {
+        positions[i] = -10
+      }
+    }
+    positionAttribute.needsUpdate = true
+  })
 
   return (
     <points ref={pointsRef} position={[0, 0, -5]}>

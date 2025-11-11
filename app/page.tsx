@@ -5,12 +5,11 @@ import { ChevronRight, BookOpen, Users, Zap, MapPin } from "lucide-react"
 import Navigation from "@/components/navigation"
 import HeroSection from "@/components/hero-section"
 import FeatureCard from "@/components/feature-card"
-import ThreeSetup from "@/components/ui/three-setup"
+
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-background via-background to-muted">
-      <ThreeSetup />
       <Navigation />
       <HeroSection />
 
