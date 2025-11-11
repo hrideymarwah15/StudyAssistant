@@ -36,8 +36,8 @@ A comprehensive study platform built with Next.js, React, and Firebase. Features
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd studypal-platform
+git clone https://github.com/hrideymarwah15/StudyPal.git
+cd StudyPal
 ```
 
 2. Install dependencies:
