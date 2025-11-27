@@ -1,0 +1,10 @@
+module.exports = {
+  extends: [
+    'next/core-web-vitals',
+    'eslint:recommended'
+  ],
+  rules: {
+    'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    'no-console': 'off'
+  }
+};
