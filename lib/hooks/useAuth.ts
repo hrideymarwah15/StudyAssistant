@@ -15,8 +15,10 @@ export function useAuth() {
       (currentUser) => {
         setUser(currentUser)
         setLoading(false)
+        setError(null)
       },
       (err) => {
+        console.error("Auth state change error:", err)
         setError(err as Error)
         setLoading(false)
       },

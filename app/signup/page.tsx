@@ -9,6 +9,9 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth"
+import { auth, db, googleProvider } from "@/lib/firebase"
+import { setDoc, doc, getDoc } from "firebase/firestore"
 
 const signupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -22,6 +25,7 @@ export default function SignupPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const {
     register,
@@ -36,22 +40,89 @@ export default function SignupPage() {
     setError(null)
 
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password)
+      const user = userCredential.user
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to create account")
-      }
+      // Store user data in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: data.email,
+        name: data.name,
+        createdAt: new Date().toISOString(),
+        subjects: [],
+        preferences: {
+          pace: "normal",
+          dailyHours: 3,
+        },
+      })
 
       router.push("/materials")
     } catch (err: any) {
-      setError(err.message || "Failed to create account. Please try again.")
+      // Handle Firebase errors
+      let errorMessage = "Failed to create account. Please try again."
+      if (err.code === "auth/email-already-in-use") {
+        errorMessage = "This email is already registered. Please sign in instead."
+      } else if (err.code === "auth/weak-password") {
+        errorMessage = "Password is too weak. Please choose a stronger password."
+      } else if (err.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address. Please check and try again."
+      } else if (err.code === "auth/network-request-failed") {
+        errorMessage = "Network error. Please check your connection and try again."
+      } else if (err.code === "auth/operation-not-allowed") {
+        errorMessage = "Email/password accounts are not enabled. Please contact support."
+      } else if (err.code === "auth/configuration-not-found") {
+        errorMessage = "Firebase Authentication is not configured. Please enable Email/Password authentication in Firebase Console."
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
+    }
+  }
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    setError(null)
+    try {
+      const result = await signInWithPopup(auth, googleProvider)
+      const user = result.user
+      if (user) {
+        const userRef = doc(db, "users", user.uid)
+        const userDoc = await getDoc(userRef)
+        if (!userDoc.exists()) {
+          await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName || user.email?.split("@")[0],
+            photoURL: user.photoURL ?? null,
+            provider: "google",
+            createdAt: new Date().toISOString(),
+            subjects: [],
+            preferences: {
+              pace: "normal",
+              dailyHours: 3,
+            },
+          })
+        }
+      }
+      router.push("/materials")
+    } catch (err: any) {
+      let errorMessage = "Google sign-in failed. Please try again."
+      if (err.code === "auth/popup-closed-by-user") {
+        errorMessage = "Sign-in pop-up was closed before completing the process."
+      } else if (err.code === "auth/cancelled-popup-request") {
+        errorMessage = "Another sign-in attempt is already in progress."
+      } else if (err.code === "auth/popup-blocked") {
+        errorMessage = "The pop-up was blocked by the browser. Please allow pop-ups and try again."
+      } else if (err.code === "auth/account-exists-with-different-credential") {
+        errorMessage = "An account already exists with the same email but different sign-in credentials."
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      setError(errorMessage)
+    } finally {
+      setGoogleLoading(false)
     }
   }
   return (
@@ -130,8 +201,8 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <Button variant="outline" className="w-full bg-transparent">
-              Continue with Google
+            <Button variant="outline" className="w-full bg-transparent" type="button" onClick={handleGoogleSignIn} disabled={googleLoading}>
+              {googleLoading ? "Connecting to Google..." : "Continue with Google"}
             </Button>
 
             <p className="text-center text-muted-foreground text-sm mt-6">

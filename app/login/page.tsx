@@ -8,9 +8,10 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { useState } from "react"
-import { signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth"
+import { auth, db, googleProvider } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
+import { doc, getDoc, setDoc } from "firebase/firestore"
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const {
     register,
@@ -40,9 +42,73 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, data.email, data.password)
       router.push("/materials")
     } catch (err: any) {
-      setError(err.message || "Failed to sign in. Please check your credentials.")
+      // Handle Firebase errors
+      let errorMessage = "Failed to sign in. Please check your credentials."
+      if (err.code === "auth/user-not-found") {
+        errorMessage = "No account found with this email address."
+      } else if (err.code === "auth/wrong-password") {
+        errorMessage = "Incorrect password. Please try again."
+      } else if (err.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address. Please check and try again."
+      } else if (err.code === "auth/user-disabled") {
+        errorMessage = "This account has been disabled. Please contact support."
+      } else if (err.code === "auth/too-many-requests") {
+        errorMessage = "Too many failed attempts. Please try again later."
+      } else if (err.code === "auth/network-request-failed") {
+        errorMessage = "Network error. Please check your connection and try again."
+      } else if (err.code === "auth/configuration-not-found") {
+        errorMessage = "Firebase Authentication is not configured. Please enable Email/Password authentication in Firebase Console."
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    setError(null)
+    try {
+      const result = await signInWithPopup(auth, googleProvider)
+      const user = result.user
+      if (user) {
+        const userRef = doc(db, "users", user.uid)
+        const userDoc = await getDoc(userRef)
+        if (!userDoc.exists()) {
+          await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName || user.email?.split("@")[0],
+            photoURL: user.photoURL ?? null,
+            provider: "google",
+            createdAt: new Date().toISOString(),
+            subjects: [],
+            preferences: {
+              pace: "normal",
+              dailyHours: 3,
+            },
+          })
+        }
+      }
+      router.push("/materials")
+    } catch (err: any) {
+      let errorMessage = "Google sign-in failed. Please try again."
+      if (err.code === "auth/popup-closed-by-user") {
+        errorMessage = "Sign-in pop-up was closed before completing the process."
+      } else if (err.code === "auth/cancelled-popup-request") {
+        errorMessage = "Another sign-in attempt is already in progress."
+      } else if (err.code === "auth/popup-blocked") {
+        errorMessage = "The pop-up was blocked. Please allow pop-ups and try again."
+      } else if (err.code === "auth/account-exists-with-different-credential") {
+        errorMessage = "An account already exists with the same email but different sign-in credentials."
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      setError(errorMessage)
+    } finally {
+      setGoogleLoading(false)
     }
   }
   return (
@@ -112,8 +178,14 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button variant="outline" className="w-full bg-transparent">
-              Continue with Google
+            <Button
+              variant="outline"
+              className="w-full bg-transparent"
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={googleLoading}
+            >
+              {googleLoading ? "Connecting to Google..." : "Continue with Google"}
             </Button>
 
             <p className="text-center text-muted-foreground text-sm mt-6">

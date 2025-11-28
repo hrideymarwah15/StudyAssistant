@@ -4,8 +4,8 @@ import { Inter, Source_Serif_4 } from "next/font/google"
 import { Providers } from "@/components/providers"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"] })
-const sourceSerif = Source_Serif_4({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
+const sourceSerif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif" })
 
 export const metadata: Metadata = {
   title: "StudyPal - Master Your Studies",
@@ -37,8 +37,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} ${sourceSerif.variable} antialiased`}>
         <Providers>
           {children}
         </Providers>
