@@ -1,13 +1,39 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { ChevronRight, BookOpen, Users, Zap, MapPin } from "lucide-react"
+import { ChevronRight, BookOpen, Users, Zap, Heart, Loader2 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import HeroSection from "@/components/hero-section"
 import FeatureCard from "@/components/feature-card"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { onAuthStateChanged } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 
 export default function Home() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.push("/materials")
+      } else {
+        setLoading(false)
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-background via-background to-muted">
       <Navigation />
@@ -51,13 +77,7 @@ export default function Home() {
               href="/planner"
             />
             <FeatureCard
-              icon={<Zap className="w-6 h-6" />}
-              title="Jobs & Opportunities"
-              description="Discover internships and job opportunities tailored to your skills and interests."
-              href="/jobs"
-            />
-            <FeatureCard
-              icon={<MapPin className="w-6 h-6" />}
+              icon={<Heart className="w-6 h-6" />}
               title="Mental Health Support"
               description="Access mental health resources and find support when you need it most."
               href="/support"

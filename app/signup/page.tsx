@@ -88,22 +88,28 @@ export default function SignupPage() {
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
       if (user) {
-        const userRef = doc(db, "users", user.uid)
-        const userDoc = await getDoc(userRef)
-        if (!userDoc.exists()) {
-          await setDoc(userRef, {
-            uid: user.uid,
-            email: user.email,
-            name: user.displayName || user.email?.split("@")[0],
-            photoURL: user.photoURL ?? null,
-            provider: "google",
-            createdAt: new Date().toISOString(),
-            subjects: [],
-            preferences: {
-              pace: "normal",
-              dailyHours: 3,
-            },
-          })
+        // Try to save user data to Firestore, but don't block login if it fails
+        try {
+          const userRef = doc(db, "users", user.uid)
+          const userDoc = await getDoc(userRef)
+          if (!userDoc.exists()) {
+            await setDoc(userRef, {
+              uid: user.uid,
+              email: user.email,
+              name: user.displayName || user.email?.split("@")[0],
+              photoURL: user.photoURL ?? null,
+              provider: "google",
+              createdAt: new Date().toISOString(),
+              subjects: [],
+              preferences: {
+                pace: "normal",
+                dailyHours: 3,
+              },
+            })
+          }
+        } catch (firestoreErr: any) {
+          // Log but don't block - user is still authenticated
+          console.warn("Could not save user profile to Firestore:", firestoreErr.message)
         }
       }
       router.push("/materials")

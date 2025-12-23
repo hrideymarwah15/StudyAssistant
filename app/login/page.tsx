@@ -39,13 +39,20 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      await signInWithEmailAndPassword(auth, data.email, data.password)
+      console.log("Attempting login for:", data.email)
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password)
+      console.log("Login successful!", userCredential.user.email, userCredential.user.uid)
+      
+      // Wait a moment for auth state to propagate
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       router.push("/materials")
     } catch (err: any) {
+      console.error("Login error:", err.code, err.message)
       // Handle Firebase errors
       let errorMessage = "Failed to sign in. Please check your credentials."
-      if (err.code === "auth/user-not-found") {
-        errorMessage = "No account found with this email address."
+      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+        errorMessage = "Invalid email or password. Please check your credentials."
       } else if (err.code === "auth/wrong-password") {
         errorMessage = "Incorrect password. Please try again."
       } else if (err.code === "auth/invalid-email") {
@@ -56,8 +63,8 @@ export default function LoginPage() {
         errorMessage = "Too many failed attempts. Please try again later."
       } else if (err.code === "auth/network-request-failed") {
         errorMessage = "Network error. Please check your connection and try again."
-      } else if (err.code === "auth/configuration-not-found") {
-        errorMessage = "Firebase Authentication is not configured. Please enable Email/Password authentication in Firebase Console."
+      } else if (err.code === "auth/configuration-not-found" || err.code === "auth/operation-not-allowed") {
+        errorMessage = "Email/Password authentication is not enabled. Please enable it in Firebase Console > Authentication > Sign-in method."
       } else if (err.message) {
         errorMessage = err.message
       }
@@ -74,22 +81,28 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
       if (user) {
-        const userRef = doc(db, "users", user.uid)
-        const userDoc = await getDoc(userRef)
-        if (!userDoc.exists()) {
-          await setDoc(userRef, {
-            uid: user.uid,
-            email: user.email,
-            name: user.displayName || user.email?.split("@")[0],
-            photoURL: user.photoURL ?? null,
-            provider: "google",
-            createdAt: new Date().toISOString(),
-            subjects: [],
-            preferences: {
-              pace: "normal",
-              dailyHours: 3,
-            },
-          })
+        // Try to save user data to Firestore, but don't block login if it fails
+        try {
+          const userRef = doc(db, "users", user.uid)
+          const userDoc = await getDoc(userRef)
+          if (!userDoc.exists()) {
+            await setDoc(userRef, {
+              uid: user.uid,
+              email: user.email,
+              name: user.displayName || user.email?.split("@")[0],
+              photoURL: user.photoURL ?? null,
+              provider: "google",
+              createdAt: new Date().toISOString(),
+              subjects: [],
+              preferences: {
+                pace: "normal",
+                dailyHours: 3,
+              },
+            })
+          }
+        } catch (firestoreErr: any) {
+          // Log but don't block - user is still authenticated
+          console.warn("Could not save user profile to Firestore:", firestoreErr.message)
         }
       }
       router.push("/materials")

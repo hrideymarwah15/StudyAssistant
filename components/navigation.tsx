@@ -2,11 +2,34 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Menu } from "lucide-react"
-import { useState } from "react"
+import { Menu, LogOut, User } from "lucide-react"
+import { useState, useEffect } from "react"
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+import { useRouter } from "next/navigation"
 
 export default function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
+  const [user, setUser] = useState<FirebaseUser | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      router.push("/")
+    } catch (error) {
+      console.error("Logout error:", error)
+    }
+  }
 
   return (
     <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -22,24 +45,41 @@ export default function Navigation() {
           <Link href="/materials" className="text-muted-foreground hover:text-foreground transition">
             Materials
           </Link>
+          <Link href="/flashcards" className="text-muted-foreground hover:text-foreground transition">
+            Flashcards
+          </Link>
           <Link href="/groups" className="text-muted-foreground hover:text-foreground transition">
             Groups
           </Link>
           <Link href="/planner" className="text-muted-foreground hover:text-foreground transition">
             Planner
           </Link>
-          <Link href="/jobs" className="text-muted-foreground hover:text-foreground transition">
-            Jobs
-          </Link>
         </div>
 
         <div className="hidden md:flex items-center gap-4">
-          <Link href="/login">
-            <Button variant="ghost">Sign In</Button>
-          </Link>
-          <Link href="/signup">
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Get Started</Button>
-          </Link>
+          {loading ? (
+            <div className="w-20 h-8 bg-muted animate-pulse rounded" />
+          ) : user ? (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="w-4 h-4" />
+                <span>{user.displayName || user.email?.split("@")[0]}</span>
+              </div>
+              <Button variant="ghost" onClick={handleLogout} className="flex items-center gap-2">
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link href="/login">
+                <Button variant="ghost">Sign In</Button>
+              </Link>
+              <Link href="/signup">
+                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Get Started</Button>
+              </Link>
+            </>
+          )}
         </div>
 
         <button className="md:hidden" onClick={() => setIsOpen(!isOpen)}>
@@ -52,23 +92,38 @@ export default function Navigation() {
               <Link href="/materials" className="text-muted-foreground hover:text-foreground">
                 Materials
               </Link>
+              <Link href="/flashcards" className="text-muted-foreground hover:text-foreground">
+                Flashcards
+              </Link>
               <Link href="/groups" className="text-muted-foreground hover:text-foreground">
                 Groups
               </Link>
               <Link href="/planner" className="text-muted-foreground hover:text-foreground">
                 Planner
               </Link>
-              <Link href="/jobs" className="text-muted-foreground hover:text-foreground">
-                Jobs
-              </Link>
-              <Link href="/login">
-                <Button variant="ghost" className="w-full justify-start">
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="/signup">
-                <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Get Started</Button>
-              </Link>
+              {user ? (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <User className="w-4 h-4" />
+                    <span>{user.displayName || user.email?.split("@")[0]}</span>
+                  </div>
+                  <Button variant="ghost" onClick={handleLogout} className="w-full justify-start">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link href="/login">
+                    <Button variant="ghost" className="w-full justify-start">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/signup">
+                    <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Get Started</Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}
