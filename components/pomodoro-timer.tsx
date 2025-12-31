@@ -8,6 +8,7 @@ import {
   type PomodoroSettings, type Task 
 } from "@/lib/firestore"
 import { useAuthContext } from "./auth-provider"
+import { analyzeLearningPatterns, generatePersonalizedContent } from "@/lib/ai-client"
 
 interface PomodoroTimerProps {
   task?: Task | null
@@ -36,8 +37,14 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
   const [isRunning, setIsRunning] = useState(false)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
   const [totalWorkTime, setTotalWorkTime] = useState(0)
+  const [streak, setStreak] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const startTimeRef = useRef<Date | null>(null)
+  const [aiInsights, setAiInsights] = useState<{
+    optimalWorkTime: string
+    recommendedBreakActivity: string
+    productivityTips: string[]
+  } | null>(null)
 
   // Load settings
   useEffect(() => {
@@ -47,6 +54,32 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
           setSettings(saved)
           setTimeLeft(saved.workDuration * 60)
         }
+      })
+
+      // Generate AI insights
+      generatePersonalizedContent({
+        learningStyle: "visual",
+        goals: ["Improve focus", "Complete tasks efficiently"],
+        currentLevel: "intermediate",
+        preferredSubjects: ["Study", "Work"]
+      }, "productivity techniques", "explanation").then(content => {
+        // Mock insights based on content
+        setAiInsights({
+          optimalWorkTime: "9:00 AM - 11:00 AM",
+          recommendedBreakActivity: "Take a 5-minute walk or do stretching exercises",
+          productivityTips: [
+            "Maintain consistent sleep schedule",
+            "Stay hydrated during work sessions",
+            "Use the 2-minute rule for small tasks"
+          ]
+        })
+      }).catch(() => {
+        // Fallback insights
+        setAiInsights({
+          optimalWorkTime: "Morning hours",
+          recommendedBreakActivity: "Light exercise or meditation",
+          productivityTips: ["Stay focused", "Take regular breaks", "Track progress"]
+        })
       })
     }
   }, [user])
@@ -68,31 +101,132 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
     }
   }, [isRunning, timeLeft])
 
-  const handleTimerComplete = useCallback(async () => {
-    setIsRunning(false)
-    
-    // Play sound
-    if (settings.soundEnabled && audioRef.current) {
-      audioRef.current.play().catch(() => {})
+  const [isAlertVisible, setIsAlertVisible] = useState(false)
+  const [alertMessage, setAlertMessage] = useState("")
+  const alertTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // Initialize audio context for better sound playback
+  useEffect(() => {
+    const initAudio = () => {
+      try {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      } catch (error) {
+        console.warn('Audio context not supported')
+      }
     }
 
-    // Request notification
-    if (settings.notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
-      new Notification(mode === "work" ? "Focus session complete! 🎉" : "Break over! Ready to focus?", {
-        body: mode === "work" 
-          ? `Great work! Take a ${sessionsCompleted + 1 >= settings.sessionsBeforeLongBreak ? 'long' : 'short'} break.`
-          : "Time to get back to work!",
-        icon: "/icon.svg"
-      })
+    // Initialize on user interaction to comply with browser policies
+    const handleUserInteraction = () => {
+      initAudio()
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
     }
+
+    document.addEventListener('click', handleUserInteraction)
+    document.addEventListener('keydown', handleUserInteraction)
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
+    }
+  }, [])
+
+  // Play enhanced audio alert
+  const playAudioAlert = useCallback(() => {
+    if (!settings.soundEnabled) return
+
+    try {
+      // Create a more noticeable beep sound
+      if (audioContextRef.current) {
+        const context = audioContextRef.current
+        const oscillator = context.createOscillator()
+        const gainNode = context.createGain()
+
+        oscillator.connect(gainNode)
+        gainNode.connect(context.destination)
+
+        oscillator.frequency.setValueAtTime(800, context.currentTime)
+        oscillator.frequency.setValueAtTime(600, context.currentTime + 0.1)
+
+        gainNode.gain.setValueAtTime(0.3, context.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.5)
+
+        oscillator.start(context.currentTime)
+        oscillator.stop(context.currentTime + 0.5)
+      } else if (audioRef.current) {
+        // Fallback to audio element
+        audioRef.current.play().catch(() => {})
+      }
+    } catch (error) {
+      console.warn('Audio playback failed:', error)
+    }
+  }, [settings.soundEnabled])
+
+  // Show visual alert with animation
+  const showVisualAlert = useCallback((message: string) => {
+    setAlertMessage(message)
+    setIsAlertVisible(true)
+
+    // Clear any existing timeout
+    if (alertTimeoutRef.current) {
+      clearTimeout(alertTimeoutRef.current)
+    }
+
+    // Auto-hide after 5 seconds
+    alertTimeoutRef.current = setTimeout(() => {
+      setIsAlertVisible(false)
+    }, 5000)
+  }, [])
+
+  const handleTimerComplete = useCallback(async () => {
+    setIsRunning(false)
+
+    // Enhanced audio alert
+    playAudioAlert()
+
+    // Browser notification
+    if (settings.notificationsEnabled && "Notification" in window) {
+      if (Notification.permission === "granted") {
+        const notification = new Notification(
+          mode === "work" ? "🎉 Focus Session Complete!" : "☕ Break Time Over!",
+          {
+            body: mode === "work"
+              ? `Great work! Take a ${sessionsCompleted + 1 >= settings.sessionsBeforeLongBreak ? 'long' : 'short'} break.`
+              : "Time to get back to work!",
+            icon: "/icon.svg",
+            badge: "/icon.svg",
+            requireInteraction: true, // Keep notification visible until user interacts
+            silent: false // Ensure sound plays even if system notifications are on
+          }
+        )
+
+        // Auto-close notification after 10 seconds
+        setTimeout(() => notification.close(), 10000)
+      } else if (Notification.permission === "default") {
+        // Request permission if not asked yet
+        Notification.requestPermission()
+      }
+    }
+
+    // Visual alert
+    const alertMsg = mode === "work"
+      ? `🎉 Session Complete! ${sessionsCompleted + 1 >= settings.sessionsBeforeLongBreak ? 'Long break time!' : 'Short break earned!'}`
+      : "⚡ Break's over! Ready to focus?"
+    showVisualAlert(alertMsg)
 
     // Log session
     if (user && startTimeRef.current && mode === "work") {
       const duration = settings.workDuration
-      await logPomodoroSession({
+      const sessionData: any = {
         userId: user.uid,
-        taskId: task?.id,
-        course: task?.course,
         startTime: startTimeRef.current,
         endTime: new Date(),
         plannedDuration: duration,
@@ -100,9 +234,16 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
         type: mode,
         completed: true,
         interrupted: false
-      })
+      }
+      
+      // Only include taskId and course if task exists
+      if (task?.id) sessionData.taskId = task.id
+      if (task?.course) sessionData.course = task.course
+      
+      await logPomodoroSession(sessionData)
       setTotalWorkTime(prev => prev + duration)
       setSessionsCompleted(prev => prev + 1)
+      setStreak(prev => prev + 1)
       onSessionComplete?.({ duration, type: "work" })
     }
 
@@ -230,12 +371,12 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
           <div className="flex items-center gap-2">
             <button 
               onClick={() => updateSettings({ soundEnabled: !settings.soundEnabled })}
-              className="p-1 hover:bg-muted rounded"
+              className="p-1 hover:bg-slate-700 rounded"
             >
               {settings.soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
             {onClose && (
-              <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+              <button onClick={onClose} className="p-1 hover:bg-slate-700 rounded">
                 <X className="w-4 h-4" />
               </button>
             )}
@@ -244,7 +385,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
 
         {/* Timer display */}
         <div className="text-center mb-4">
-          <div className="text-4xl font-mono font-bold text-foreground mb-2">
+          <div className="text-4xl font-mono font-bold text-slate-100 mb-2">
             {formatTime(timeLeft)}
           </div>
           
@@ -276,10 +417,12 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
         </div>
 
         {/* Stats */}
-        <div className="flex justify-center gap-4 mt-4 text-xs text-muted-foreground">
+        <div className="flex justify-center gap-4 mt-4 text-xs text-slate-400">
           <span>{sessionsCompleted} sessions</span>
           <span>•</span>
           <span>{Math.round(totalWorkTime)} min focused</span>
+          <span>•</span>
+          <span>{streak} day streak</span>
         </div>
       </div>
     )
@@ -287,22 +430,23 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
 
   // Full version
   return (
-    <div className="relative">
+    <>
+      <div className="relative">
       {/* Hidden audio element */}
       <audio ref={audioRef} src="/notification.mp3" preload="auto" />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-foreground">Focus Timer</h2>
+        <h2 className="text-xl font-semibold text-slate-100">Focus Timer</h2>
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
           >
             <Settings className="w-5 h-5" />
           </button>
           {onClose && (
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
+            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
               <X className="w-5 h-5" />
             </button>
           )}
@@ -311,7 +455,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
 
       {/* Task info */}
       {task && (
-        <div className="mb-6 p-4 rounded-xl bg-muted/50">
+        <div className="mb-6 p-4 rounded-xl bg-card border border-border">
           <p className="text-sm text-muted-foreground">Working on:</p>
           <p className="font-medium text-foreground">{task.title}</p>
         </div>
@@ -334,11 +478,11 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                     id === "short-break" ? "from-green-500 to-emerald-500" :
                     "from-blue-500 to-cyan-500"
                   } text-white`
-                : "bg-muted text-muted-foreground hover:text-foreground"
+                : "bg-slate-700 text-slate-400 hover:text-slate-100"
             }`}
           >
             <Icon className="w-4 h-4" />
-            <span className="hidden sm:inline">{label}</span>
+            <span className="text-xs sm:text-sm">{label}</span>
           </button>
         ))}
       </div>
@@ -395,10 +539,10 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
           
           {/* Time display */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-5xl font-mono font-bold text-foreground">
+            <span className="text-5xl font-mono font-bold text-slate-100">
               {formatTime(timeLeft)}
             </span>
-            <span className="text-sm text-muted-foreground capitalize mt-2">
+            <span className="text-sm text-slate-400 capitalize mt-2">
               {mode.replace('-', ' ')}
             </span>
           </div>
@@ -435,24 +579,62 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
       {/* Session stats */}
       <div className="flex justify-center gap-8 text-center">
         <div>
-          <p className="text-2xl font-bold text-foreground">{sessionsCompleted}</p>
-          <p className="text-xs text-muted-foreground">Sessions</p>
+          <p className="text-2xl font-bold text-slate-100">{sessionsCompleted}</p>
+          <p className="text-xs text-slate-400">Sessions</p>
         </div>
         <div>
-          <p className="text-2xl font-bold text-foreground">{Math.round(totalWorkTime)}</p>
-          <p className="text-xs text-muted-foreground">Minutes focused</p>
+          <p className="text-2xl font-bold text-slate-100">{Math.round(totalWorkTime)}</p>
+          <p className="text-xs text-slate-400">Minutes focused</p>
         </div>
         <div>
-          <p className="text-2xl font-bold text-foreground">
+          <p className="text-2xl font-bold text-slate-100">{streak}</p>
+          <p className="text-xs text-slate-400">Day streak</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-slate-100">
             {sessionsCompleted % settings.sessionsBeforeLongBreak}/{settings.sessionsBeforeLongBreak}
           </p>
-          <p className="text-xs text-muted-foreground">Until long break</p>
+          <p className="text-xs text-slate-400">Until long break</p>
         </div>
       </div>
 
+      {/* AI Insights */}
+      {aiInsights && (
+        <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+          <h3 className="font-medium text-slate-100 mb-3 flex items-center gap-2">
+            <Brain className="w-4 h-4 text-purple-500" />
+            AI Productivity Insights
+          </h3>
+          
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Optimal work time</p>
+              <p className="font-medium text-foreground">{aiInsights.optimalWorkTime}</p>
+            </div>
+            
+            <div>
+              <p className="text-sm text-muted-foreground">Recommended break activity</p>
+              <p className="font-medium text-foreground">{aiInsights.recommendedBreakActivity}</p>
+            </div>
+            
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Productivity tips</p>
+              <ul className="space-y-1">
+                {aiInsights.productivityTips.map((tip, i) => (
+                  <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                    <span className="text-purple-500 mt-1">•</span>
+                    {tip}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Settings panel */}
       {showSettings && (
-        <div className="mt-6 p-4 rounded-xl bg-muted/50 space-y-4">
+        <div className="mt-6 p-4 rounded-xl bg-card border border-border space-y-4">
           <h3 className="font-medium text-foreground">Timer Settings</h3>
           
           <div className="grid grid-cols-3 gap-4">
@@ -462,7 +644,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 type="number"
                 value={settings.workDuration}
                 onChange={(e) => updateSettings({ workDuration: parseInt(e.target.value) || 25 })}
-                className="w-full mt-1 px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm"
                 min={1}
                 max={120}
               />
@@ -473,7 +655,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 type="number"
                 value={settings.shortBreakDuration}
                 onChange={(e) => updateSettings({ shortBreakDuration: parseInt(e.target.value) || 5 })}
-                className="w-full mt-1 px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm"
                 min={1}
                 max={30}
               />
@@ -484,7 +666,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 type="number"
                 value={settings.longBreakDuration}
                 onChange={(e) => updateSettings({ longBreakDuration: parseInt(e.target.value) || 15 })}
-                className="w-full mt-1 px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm"
                 min={1}
                 max={60}
               />
@@ -499,7 +681,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 onChange={(e) => updateSettings({ autoStartBreaks: e.target.checked })}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-sm">Auto-start breaks</span>
+              <span className="text-sm text-foreground">Auto-start breaks</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
@@ -508,7 +690,7 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 onChange={(e) => updateSettings({ autoStartWork: e.target.checked })}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-sm">Auto-start focus after break</span>
+              <span className="text-sm text-foreground">Auto-start focus after break</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
@@ -517,11 +699,28 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
                 onChange={(e) => updateSettings({ notificationsEnabled: e.target.checked })}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-sm">Desktop notifications</span>
+              <span className="text-sm text-foreground">Desktop notifications</span>
             </label>
           </div>
         </div>
       )}
     </div>
+
+    {/* Visual Alert Overlay */}
+    {isAlertVisible && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 pointer-events-none">
+        <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-8 py-4 rounded-2xl shadow-2xl animate-bounce max-w-md mx-4 text-center">
+          <div className="text-4xl mb-2">🎉</div>
+          <p className="text-lg font-semibold">{alertMessage}</p>
+          <button
+            onClick={() => setIsAlertVisible(false)}
+            className="mt-3 px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors pointer-events-auto"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

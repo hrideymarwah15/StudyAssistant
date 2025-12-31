@@ -32,3 +32,21 @@ export async function uploadFile(file: File, userId: string): Promise<{ material
 
   return response.json()
 }
+
+export async function processMaterial(
+  content: string,
+  options: {
+    generateSummary?: boolean
+    generateFlashcards?: boolean
+    extractKeyPoints?: boolean
+  } = {}
+): Promise<{
+  summary?: string
+  flashcards?: Array<{ question: string; answer: string }>
+  keyPoints?: string[]
+}> {
+  return apiCall("/api/materials/process", {
+    method: "POST",
+    body: JSON.stringify({ content, options }),
+  })
+}

@@ -250,11 +250,20 @@ Return ONLY a JSON array: [{"front": "Question?", "back": "Answer"}]`
 
   // Parse JSON from response
   let jsonStr = response
-  const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/)
+  
+  // Clean the response to remove markdown formatting and backticks
+  const cleanResponse = response
+    .replace(/```(?:json)?\s*/g, '')  // Remove opening code block markers
+    .replace(/```\s*$/g, '')          // Remove closing code block markers
+    .replace(/`/g, '')                // Remove any remaining backticks
+    .trim()
+  
+  // Try to extract JSON from cleaned response
+  const jsonMatch = cleanResponse.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (jsonMatch) {
     jsonStr = jsonMatch[1].trim()
   } else {
-    const arrayMatch = response.match(/\[[\s\S]*\]/)
+    const arrayMatch = cleanResponse.match(/\[[\s\S]*\]/)
     if (arrayMatch) jsonStr = arrayMatch[0]
   }
 
@@ -302,48 +311,6 @@ ${context?.userMaterials?.length ? `The user has materials on: ${context.userMat
   return chat(messages, { systemPrompt, temperature: 0.7, maxTokens: 1024 })
 }
 
-// ==================== QUIZ GENERATION ====================
-export async function generateQuiz(
-  topic: string,
-  questionCount: number = 5,
-  questionTypes: ("multiple-choice" | "true-false" | "short-answer")[] = ["multiple-choice"]
-): Promise<Array<{
-  question: string
-  type: string
-  options?: string[]
-  correctAnswer: string
-  explanation?: string
-}>> {
-  const systemPrompt = "You are an expert quiz creator. Return ONLY valid JSON."
-
-  const userPrompt = `Create a ${questionCount}-question quiz about "${topic}".
-Question types: ${questionTypes.join(", ")}
-
-Return JSON array:
-[{
-  "question": "Question text?",
-  "type": "multiple-choice|true-false|short-answer",
-  "options": ["A", "B", "C", "D"], // only for multiple-choice
-  "correctAnswer": "The correct answer",
-  "explanation": "Brief explanation"
-}]`
-
-  const response = await chat(
-    [{ role: "user", content: userPrompt }],
-    { systemPrompt, temperature: 0.7, maxTokens: 4096 }
-  )
-
-  let jsonStr = response
-  const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (jsonMatch) jsonStr = jsonMatch[1].trim()
-  else {
-    const arrayMatch = response.match(/\[[\s\S]*\]/)
-    if (arrayMatch) jsonStr = arrayMatch[0]
-  }
-
-  return JSON.parse(jsonStr)
-}
-
 // ==================== SUMMARIZATION ====================
 export async function summarizeContent(
   content: string,
@@ -383,4 +350,270 @@ export async function explainConcept(
     role: "user",
     content: `Explain: "${concept}"\n\n${levelPrompts[level]}`
   }], { temperature: 0.7, maxTokens: 2048 })
+}
+
+// ==================== GENERATE STUDY PLAN ====================
+export interface StudyPlanItem {
+  topic: string
+  duration: number // in minutes
+  resources: string[]
+  priority: "high" | "medium" | "low"
+}
+
+export async function generateStudyPlan(
+  subject: string,
+  goals: string[],
+  availableTime: number, // in hours per week
+  currentLevel: "beginner" | "intermediate" | "advanced" = "intermediate",
+  deadline?: Date
+): Promise<StudyPlanItem[]> {
+  const deadlineStr = deadline ? `Deadline: ${deadline.toDateString()}` : ""
+  
+  const prompt = `Create a detailed study plan for ${subject} with the following goals: ${goals.join(", ")}.
+Available study time: ${availableTime} hours per week.
+Current level: ${currentLevel}.
+${deadlineStr}
+
+Return a JSON array of study plan items with this structure:
+[
+  {
+    "topic": "Topic name",
+    "duration": 60,
+    "resources": ["Resource 1", "Resource 2"],
+    "priority": "high"
+  }
+]
+
+Make the plan realistic, progressive, and optimized for spaced repetition.`
+
+  const response = await chat([{
+    role: "user",
+    content: prompt
+  }], { temperature: 0.3, maxTokens: 4096 })
+
+  try {
+    // Clean the response by removing markdown code blocks and backticks
+    let cleanResponse = response.trim()
+    
+    // Remove markdown code block markers
+    cleanResponse = cleanResponse.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    
+    // Remove any remaining backticks
+    cleanResponse = cleanResponse.replace(/`/g, '')
+    
+    // Try to find JSON array if response contains extra text
+    const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/)
+    if (jsonMatch) {
+      cleanResponse = jsonMatch[0]
+    }
+    
+    return JSON.parse(cleanResponse)
+  } catch (e) {
+    console.error("Failed to parse study plan JSON:", e)
+    console.error("Raw response:", response)
+    return []
+  }
+}
+
+// ==================== GENERATE QUIZ ====================
+export interface QuizQuestion {
+  question: string
+  options: string[]
+  correctAnswer: number
+  explanation: string
+  difficulty: "easy" | "medium" | "hard"
+}
+
+export async function generateQuiz(
+  contentOrTopic: string,
+  topicOrQuestionCount?: string | number,
+  questionCountOrDifficulty?: number | "easy" | "medium" | "hard",
+  difficulty: "easy" | "medium" | "hard" = "medium"
+): Promise<QuizQuestion[]> {
+  let content: string
+  let topic: string
+  let questionCount: number = 10
+
+  // Handle overloads
+  if (typeof topicOrQuestionCount === 'string') {
+    // generateQuiz(content, topic, questionCount?, difficulty?)
+    content = contentOrTopic
+    topic = topicOrQuestionCount
+    if (typeof questionCountOrDifficulty === 'number') {
+      questionCount = questionCountOrDifficulty
+    }
+  } else {
+    // generateQuiz(topic, questionCount?, difficulty?)
+    content = contentOrTopic // use topic as content
+    topic = contentOrTopic
+    if (typeof topicOrQuestionCount === 'number') {
+      questionCount = topicOrQuestionCount
+    }
+    if (typeof questionCountOrDifficulty === 'string') {
+      difficulty = questionCountOrDifficulty
+    }
+  }
+
+  const processedContent = truncateContent(content, 30000)
+  
+  const prompt = `Generate a ${questionCount}-question multiple-choice quiz on "${topic}" based on this content.
+Difficulty level: ${difficulty}
+
+Return a JSON array with this exact structure:
+[
+  {
+    "question": "Question text?",
+    "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
+    "correctAnswer": 0,
+    "explanation": "Why this is correct",
+    "difficulty": "${difficulty}"
+  }
+]
+
+Ensure questions test understanding, not just memorization. Make options plausible but clearly distinguishable.
+
+Content:
+"""
+${processedContent}
+"""`
+
+  const response = await chat([{
+    role: "user",
+    content: prompt
+  }], { temperature: 0.4, maxTokens: 6144 })
+
+  try {
+    // Clean the response by removing markdown code blocks and backticks
+    let cleanResponse = response.trim()
+    
+    // Remove markdown code block markers
+    cleanResponse = cleanResponse.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    
+    // Remove any remaining backticks
+    cleanResponse = cleanResponse.replace(/`/g, '')
+    
+    // Try to find JSON array if response contains extra text
+    const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/)
+    if (jsonMatch) {
+      cleanResponse = jsonMatch[0]
+    }
+    
+    return JSON.parse(cleanResponse)
+  } catch (e) {
+    console.error("Failed to parse quiz JSON:", e)
+    console.error("Raw response:", response)
+    return []
+  }
+}
+
+// ==================== ANALYZE LEARNING PATTERNS ====================
+export interface LearningAnalysis {
+  strengths: string[]
+  weaknesses: string[]
+  recommendations: string[]
+  predictedImprovement: number // percentage
+  optimalStudyTimes: string[]
+}
+
+export async function analyzeLearningPatterns(
+  userHistory: {
+    subject: string
+    score: number
+    timeSpent: number
+    date: Date
+  }[]
+): Promise<LearningAnalysis> {
+  const historyStr = userHistory.map(h => 
+    `${h.subject}: ${h.score}% in ${h.timeSpent}min on ${h.date.toDateString()}`
+  ).join('\n')
+
+  const prompt = `Analyze this learning history and provide insights:
+
+${historyStr}
+
+Return a JSON object with:
+{
+  "strengths": ["Strength 1", "Strength 2"],
+  "weaknesses": ["Weakness 1"],
+  "recommendations": ["Recommendation 1"],
+  "predictedImprovement": 15,
+  "optimalStudyTimes": ["Morning 9-11 AM", "Evening 7-9 PM"]
+}
+
+Focus on patterns, time management, and subject-specific advice.`
+
+  const response = await chat([{
+    role: "user",
+    content: prompt
+  }], { temperature: 0.2, maxTokens: 2048 })
+
+  try {
+    // Clean the response by removing markdown code blocks and backticks
+    let cleanResponse = response.trim()
+    
+    // Remove markdown code block markers
+    cleanResponse = cleanResponse.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    
+    // Remove any remaining backticks
+    cleanResponse = cleanResponse.replace(/`/g, '')
+    
+    // Try to find JSON object if response contains extra text
+    const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      cleanResponse = jsonMatch[0]
+    }
+    
+    return JSON.parse(cleanResponse)
+  } catch (e) {
+    console.error("Failed to parse analysis JSON:", e)
+    console.error("Raw response:", response)
+    return {
+      strengths: [],
+      weaknesses: [],
+      recommendations: [],
+      predictedImprovement: 0,
+      optimalStudyTimes: []
+    }
+  }
+}
+
+// ==================== GENERATE PERSONALIZED CONTENT ====================
+export async function generatePersonalizedContent(
+  userProfile: {
+    learningStyle: "visual" | "auditory" | "kinesthetic" | "reading"
+    goals: string[]
+    currentLevel: string
+    preferredSubjects: string[]
+  },
+  topic: string,
+  contentType: "summary" | "examples" | "practice" | "explanation"
+): Promise<string> {
+  const stylePrompts = {
+    visual: "Include diagrams, charts, and visual analogies",
+    auditory: "Use storytelling and audio-friendly explanations",
+    kinesthetic: "Include hands-on examples and practical applications",
+    reading: "Provide detailed written explanations with references"
+  }
+
+  const typePrompts = {
+    summary: "Create a concise summary",
+    examples: "Provide practical examples and case studies",
+    practice: "Generate practice problems and exercises",
+    explanation: "Explain the concept in depth"
+  }
+
+  const prompt = `Create ${contentType} content for "${topic}" tailored to:
+- Learning style: ${userProfile.learningStyle} (${stylePrompts[userProfile.learningStyle]})
+- Goals: ${userProfile.goals.join(", ")}
+- Current level: ${userProfile.currentLevel}
+- Preferred subjects: ${userProfile.preferredSubjects.join(", ")}
+
+${typePrompts[contentType]}
+
+Make it engaging, personalized, and effective for this learner.`
+
+  return chat([{
+    role: "user",
+    content: prompt
+  }], { temperature: 0.6, maxTokens: 3072 })
 }

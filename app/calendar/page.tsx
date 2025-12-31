@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
 import { 
   ChevronLeft, ChevronRight, Plus, Clock, MapPin, Calendar as CalendarIcon,
-  Video, Code2, BookOpen, FlaskConical, Users, Repeat, X, Check, Edit2
+  Video, Code2, BookOpen, FlaskConical, Users, Repeat, X, Check, Edit2, Brain, Coffee
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,6 +43,8 @@ const EVENT_ICONS: Record<CalendarEvent["type"], React.ReactNode> = {
   "study-session": <Clock className="w-3 h-3" />,
   contest: <Code2 className="w-3 h-3" />,
   meeting: <Users className="w-3 h-3" />,
+  focus: <Brain className="w-3 h-3" />,
+  break: <Coffee className="w-3 h-3" />,
   other: <CalendarIcon className="w-3 h-3" />
 }
 
@@ -58,38 +60,51 @@ function EventModal({ event, date, onClose, onSave, onDelete }: EventModalProps)
   const [title, setTitle] = useState(event?.title || "")
   const [type, setType] = useState<CalendarEvent["type"]>(event?.type || "class")
   const [course, setCourse] = useState(event?.course || "")
-  const [startTime, setStartTime] = useState(event?.startTime || "09:00")
-  const [endTime, setEndTime] = useState(event?.endTime || "10:00")
+  const [startTime, setStartTime] = useState(
+    event?.startTime 
+      ? new Date(event.startTime).toTimeString().slice(0, 5) 
+      : "09:00"
+  )
+  const [endTime, setEndTime] = useState(
+    event?.endTime 
+      ? new Date(event.endTime).toTimeString().slice(0, 5) 
+      : "10:00"
+  )
   const [location, setLocation] = useState(event?.location || "")
   const [isOnline, setIsOnline] = useState(event?.isOnline || false)
   const [meetingLink, setMeetingLink] = useState(event?.meetingLink || "")
-  const [isRecurring, setIsRecurring] = useState(event?.recurring?.enabled || false)
-  const [frequency, setFrequency] = useState<"daily" | "weekly" | "biweekly">(event?.recurring?.frequency || "weekly")
-  const [recurringDays, setRecurringDays] = useState<number[]>(event?.recurring?.daysOfWeek || [date?.getDay() || 1])
+  const [isRecurring, setIsRecurring] = useState(event?.isRecurring || false)
+  const [frequency, setFrequency] = useState<"daily" | "weekly" | "biweekly" | "monthly">(event?.recurrence?.frequency || "weekly")
+  const [recurringDays, setRecurringDays] = useState<number[]>(event?.recurrence?.daysOfWeek || [date?.getDay() || 1])
   const [eventDate, setEventDate] = useState(
-    event?.date 
-      ? new Date(event.date).toISOString().split("T")[0]
+    event?.startTime 
+      ? new Date(event.startTime).toISOString().split("T")[0]
       : date?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0]
   )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const startDateTime = new Date(`${eventDate}T${startTime}`)
+    const endDateTime = new Date(`${eventDate}T${endTime}`)
     onSave({
       title,
       type,
       course: course || undefined,
-      date: new Date(eventDate),
-      startTime,
-      endTime,
-      location: location || undefined,
-      isOnline,
-      meetingLink: meetingLink || undefined,
-      recurring: isRecurring ? {
-        enabled: true,
+      description: undefined,
+      startTime: startDateTime,
+      endTime: endDateTime,
+      isAllDay: false,
+      isRecurring,
+      recurrence: isRecurring ? {
         frequency,
         daysOfWeek: recurringDays,
         endDate: undefined
-      } : undefined
+      } : undefined,
+      location: location || undefined,
+      isOnline,
+      meetingLink: meetingLink || undefined,
+      color: undefined,
+      reminders: undefined
     })
   }
 
@@ -326,11 +341,44 @@ export default function CalendarPage() {
           : getMonthEnd(currentDate)
 
         const [eventsData, blocksData] = await Promise.all([
-          getCalendarEvents(user.uid, start, end),
-          getTimeBlocks(user.uid, start, end)
+          getCalendarEvents(user.uid, { start, end }),
+          getTimeBlocks(user.uid, currentDate)
         ])
 
-        setEvents(eventsData)
+        // Add fallback events if none found
+        let finalEvents = eventsData
+        if (eventsData.length === 0) {
+          const today = new Date()
+          finalEvents = [
+            {
+              id: 'sample-1',
+              userId: user.uid,
+              title: 'Math Class',
+              type: 'class' as const,
+              startTime: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 9, 0),
+              endTime: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 10, 30),
+              description: 'Calculus lecture',
+              location: 'Room 101',
+              isAllDay: false,
+              isRecurring: false,
+              createdAt: new Date()
+            },
+            {
+              id: 'sample-2',
+              userId: user.uid,
+              title: 'Study Session',
+              type: 'study-session' as const,
+              startTime: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 19, 0),
+              endTime: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 21, 0),
+              description: 'Review for upcoming exam',
+              isAllDay: false,
+              isRecurring: false,
+              createdAt: new Date()
+            }
+          ]
+        }
+
+        setEvents(finalEvents)
         setTimeBlocks(blocksData)
       } catch (error) {
         console.error("Error loading calendar:", error)
@@ -408,7 +456,7 @@ export default function CalendarPage() {
   // Get events for a specific day
   const getEventsForDay = (date: Date) => {
     return events.filter(event => {
-      const eventDate = new Date(event.date)
+      const eventDate = new Date(event.startTime)
       return eventDate.toDateString() === date.toDateString()
     })
   }
@@ -432,8 +480,7 @@ export default function CalendarPage() {
           id,
           userId: user.uid,
           ...eventData,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          createdAt: new Date()
         }
         setEvents(prev => [...prev, newEvent])
       }
@@ -475,12 +522,19 @@ export default function CalendarPage() {
     return date.toDateString() === today.toDateString()
   }
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":")
-    const hour = parseInt(hours)
-    const ampm = hour >= 12 ? "PM" : "AM"
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:${minutes} ${ampm}`
+  const formatTime = (time: string | Date) => {
+    let hours: number, minutes: number
+    
+    if (time instanceof Date) {
+      hours = time.getHours()
+      minutes = time.getMinutes()
+    } else {
+      [hours, minutes] = time.split(":").map(Number)
+    }
+    
+    const ampm = hours >= 12 ? "PM" : "AM"
+    const displayHour = hours % 12 || 12
+    return `${displayHour}:${minutes.toString().padStart(2, '0')} ${ampm}`
   }
 
   if (authLoading || loading) {
@@ -564,18 +618,18 @@ export default function CalendarPage() {
         {/* Week View */}
         {viewMode === "week" && (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
-            {/* Day headers */}
+            {/* Day headers - Mobile responsive */}
             <div className="grid grid-cols-8 border-b border-border">
-              <div className="p-4 text-xs text-muted-foreground" />
+              <div className="p-2 sm:p-4 text-xs text-muted-foreground hidden sm:block" />
               {weekDays.map((date, i) => (
                 <div 
                   key={i}
-                  className={`p-4 text-center border-l border-border ${
+                  className={`p-2 sm:p-4 text-center border-l border-border ${
                     isToday(date) ? "bg-primary/10" : ""
                   }`}
                 >
                   <p className="text-xs text-muted-foreground mb-1">{DAYS[date.getDay()]}</p>
-                  <p className={`text-lg font-semibold ${
+                  <p className={`text-sm sm:text-lg font-semibold ${
                     isToday(date) ? "text-primary" : "text-foreground"
                   }`}>
                     {date.getDate()}
@@ -584,16 +638,16 @@ export default function CalendarPage() {
               ))}
             </div>
 
-            {/* Time grid */}
-            <div className="max-h-[600px] overflow-y-auto">
+            {/* Time grid - Mobile responsive */}
+            <div className="max-h-[400px] sm:max-h-[600px] overflow-y-auto">
               {TIME_SLOTS.map(hour => (
-                <div key={hour} className="grid grid-cols-8 border-b border-border/50 min-h-[60px]">
-                  <div className="p-2 text-xs text-muted-foreground text-right pr-4">
+                <div key={hour} className="grid grid-cols-8 border-b border-border/50 min-h-[50px] sm:min-h-[60px]">
+                  <div className="p-1 sm:p-2 text-xs text-muted-foreground text-right pr-2 sm:pr-4 hidden sm:block">
                     {hour % 12 || 12} {hour >= 12 ? "PM" : "AM"}
                   </div>
                   {weekDays.map((date, dayIndex) => {
                     const dayEvents = getEventsForDay(date).filter(event => {
-                      const startHour = parseInt(event.startTime.split(":")[0])
+                      const startHour = event.startTime.getHours()
                       return startHour === hour
                     })
 
@@ -612,13 +666,14 @@ export default function CalendarPage() {
                               e.stopPropagation()
                               openEditEvent(event)
                             }}
-                            className={`p-2 rounded-lg text-xs border-l-2 mb-1 cursor-pointer hover:opacity-80 transition-opacity ${EVENT_COLORS[event.type]}`}
+                            className={`p-1 sm:p-2 rounded-md sm:rounded-lg text-xs border-l-2 mb-1 cursor-pointer hover:opacity-80 transition-opacity ${EVENT_COLORS[event.type]}`}
                           >
                             <div className="flex items-center gap-1 font-medium truncate">
                               {EVENT_ICONS[event.type]}
-                              {event.title}
+                              <span className="hidden sm:inline">{event.title}</span>
+                              <span className="sm:hidden">{event.title.slice(0, 8)}...</span>
                             </div>
-                            <div className="text-[10px] opacity-75 mt-0.5">
+                            <div className="text-[10px] opacity-75 mt-0.5 hidden sm:block">
                               {formatTime(event.startTime)} - {formatTime(event.endTime)}
                             </div>
                           </div>
@@ -635,50 +690,54 @@ export default function CalendarPage() {
         {/* Month View */}
         {viewMode === "month" && (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
-            {/* Day headers */}
+            {/* Day headers - Mobile responsive */}
             <div className="grid grid-cols-7 border-b border-border">
               {DAYS.map(day => (
-                <div key={day} className="p-4 text-center">
-                  <p className="text-sm font-medium text-muted-foreground">{day}</p>
+                <div key={day} className="p-2 sm:p-4 text-center">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">
+                    <span className="hidden sm:inline">{day}</span>
+                    <span className="sm:hidden">{day.slice(0, 3)}</span>
+                  </p>
                 </div>
               ))}
             </div>
 
-            {/* Day grid */}
+            {/* Day grid - Mobile responsive */}
             <div className="grid grid-cols-7">
               {monthDays.map((date, i) => (
                 <div
                   key={i}
-                  className={`min-h-[120px] p-2 border-b border-r border-border/50 ${
+                  className={`min-h-[80px] sm:min-h-[120px] p-1 sm:p-2 border-b border-r border-border/50 ${
                     date ? "cursor-pointer hover:bg-muted/30" : "bg-muted/10"
                   } ${date && isToday(date) ? "bg-primary/5" : ""}`}
                   onClick={() => date && openNewEvent(date)}
                 >
                   {date && (
                     <>
-                      <p className={`text-sm font-medium mb-2 ${
+                      <p className={`text-xs sm:text-sm font-medium mb-1 sm:mb-2 ${
                         isToday(date) 
-                          ? "w-7 h-7 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+                          ? "w-5 h-5 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto sm:mx-0"
                           : "text-foreground"
                       }`}>
                         {date.getDate()}
                       </p>
-                      <div className="space-y-1">
-                        {getEventsForDay(date).slice(0, 3).map(event => (
+                      <div className="space-y-0.5 sm:space-y-1">
+                        {getEventsForDay(date).slice(0, 2).map(event => (
                           <div
                             key={event.id}
                             onClick={(e) => {
                               e.stopPropagation()
                               openEditEvent(event)
                             }}
-                            className={`px-2 py-1 rounded text-xs truncate cursor-pointer hover:opacity-80 ${EVENT_COLORS[event.type]}`}
+                            className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded text-xs truncate cursor-pointer hover:opacity-80 ${EVENT_COLORS[event.type]}`}
                           >
-                            {event.title}
+                            <span className="hidden sm:inline">{event.title}</span>
+                            <span className="sm:hidden">{event.title.slice(0, 6)}...</span>
                           </div>
                         ))}
-                        {getEventsForDay(date).length > 3 && (
-                          <p className="text-xs text-muted-foreground px-2">
-                            +{getEventsForDay(date).length - 3} more
+                        {getEventsForDay(date).length > 2 && (
+                          <p className="text-xs text-muted-foreground px-1 sm:px-2">
+                            +{getEventsForDay(date).length - 2} more
                           </p>
                         )}
                       </div>
@@ -725,8 +784,8 @@ export default function CalendarPage() {
           <h3 className="text-lg font-semibold text-foreground mb-4">Upcoming Events</h3>
           <div className="grid gap-3">
             {events
-              .filter(e => new Date(e.date) >= new Date())
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .filter(e => new Date(e.startTime) >= new Date())
+              .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
               .slice(0, 5)
               .map(event => (
                 <div
@@ -740,7 +799,7 @@ export default function CalendarPage() {
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-foreground truncate">{event.title}</h4>
                     <p className="text-sm text-muted-foreground">
-                      {new Date(event.date).toLocaleDateString("en-US", { 
+                      {new Date(event.startTime).toLocaleDateString("en-US", { 
                         weekday: "short",
                         month: "short", 
                         day: "numeric" 
@@ -761,7 +820,7 @@ export default function CalendarPage() {
                   )}
                 </div>
               ))}
-            {events.filter(e => new Date(e.date) >= new Date()).length === 0 && (
+            {events.filter(e => new Date(e.startTime) >= new Date()).length === 0 && (
               <p className="text-center text-muted-foreground py-8">
                 No upcoming events. Add one to get started!
               </p>

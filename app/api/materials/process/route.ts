@@ -10,48 +10,43 @@ interface ProcessingResult {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { materialId, textContent, userId } = body
+    const { content, options } = body
 
-    if (!materialId || !textContent) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!content) {
+      return NextResponse.json({ error: "Missing content" }, { status: 400 })
     }
 
-    // Mock AI processing - In production, call OpenAI API
-    const processingResult: ProcessingResult = {
-      tags: [
-        { tag: "Mathematics", confidence: 0.95 },
-        { tag: "Calculus", confidence: 0.92 },
-        { tag: "Derivatives", confidence: 0.88 },
-      ],
-      summary:
-        "This material covers fundamental calculus concepts including derivatives, chain rule, and applications.",
-      keyPoints: [
-        "Derivative definition and notation",
-        "Power rule and product rule",
-        "Chain rule applications",
-        "Critical points and optimization",
-      ],
-      flashcards: [
-        {
-          q: "What is the derivative of x³?",
-          a: "3x²",
-          difficulty: "easy",
-        },
-        {
-          q: "What is the chain rule?",
-          a: "d/dx[f(g(x))] = f'(g(x)) × g'(x)",
-          difficulty: "medium",
-        },
-        {
-          q: "How do you find inflection points?",
-          a: "Find where the second derivative equals zero and changes sign",
-          difficulty: "hard",
-        },
-      ],
+    // Mock AI processing - In production, call OpenAI API or Gemini
+    const result: any = {}
+
+    if (options.generateSummary !== false) {
+      result.summary = `AI-generated summary: ${content.substring(0, 200)}...`
     }
 
-    return NextResponse.json(processingResult, { status: 200 })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    if (options.generateFlashcards !== false) {
+      result.flashcards = [
+        {
+          question: "What is the main topic of this material?",
+          answer: "The main topic covers key concepts from the uploaded content."
+        },
+        {
+          question: "What are the key takeaways?",
+          answer: "Key takeaways include important points and concepts discussed."
+        }
+      ]
+    }
+
+    if (options.extractKeyPoints !== false) {
+      result.keyPoints = [
+        "Key point 1: Important concept from the material",
+        "Key point 2: Another crucial understanding",
+        "Key point 3: Essential takeaway for study"
+      ]
+    }
+
+    return NextResponse.json(result)
+  } catch (error) {
+    console.error("Error processing material:", error)
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 })
   }
 }

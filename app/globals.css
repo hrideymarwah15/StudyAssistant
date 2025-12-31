@@ -123,7 +123,77 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* Typography Scale for StudyPal */
+@layer utilities {
+  /* Headings */
+  .text-display-2xl {
+    @apply text-5xl md:text-6xl font-bold tracking-tight leading-tight;
+  }
+  .text-display-xl {
+    @apply text-4xl md:text-5xl font-bold tracking-tight leading-tight;
+  }
+  .text-display-lg {
+    @apply text-3xl md:text-4xl font-bold tracking-tight leading-tight;
+  }
+  .text-display-md {
+    @apply text-2xl md:text-3xl font-bold tracking-tight leading-tight;
+  }
+  .text-display-sm {
+    @apply text-xl md:text-2xl font-bold tracking-tight leading-tight;
+  }
+
+  /* Body Text */
+  .text-body-xl {
+    @apply text-lg leading-relaxed;
+  }
+  .text-body-lg {
+    @apply text-base leading-relaxed;
+  }
+  .text-body-md {
+    @apply text-sm leading-relaxed;
+  }
+  .text-body-sm {
+    @apply text-xs leading-relaxed;
+  }
+
+  /* UI Text */
+  .text-ui-lg {
+    @apply text-base font-semibold;
+  }
+  .text-ui-md {
+    @apply text-sm font-medium;
+  }
+  .text-ui-sm {
+    @apply text-xs font-medium;
+  }
+  .text-ui-xs {
+    @apply text-xs font-medium uppercase tracking-wider;
+  }
+
+  /* Code */
+  .text-code {
+    @apply font-mono text-sm;
+  }
+
+  /* Color variants for different contexts */
+  .text-primary {
+    @apply text-primary;
+  }
+  .text-secondary {
+    @apply text-secondary-foreground;
+  }
+  .text-muted {
+    @apply text-muted-foreground;
+  }
+  .text-accent {
+    @apply text-accent-foreground;
+  }
+  .text-destructive {
+    @apply text-destructive;
   }
 }
 

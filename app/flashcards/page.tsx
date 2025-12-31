@@ -10,6 +10,8 @@ import { auth } from "@/lib/firebase"
 import { getFlashcardDecks, createFlashcardDeck, getFlashcards, addFlashcard, getMaterials, type FlashcardDeck, type Flashcard, type Material } from "@/lib/firestore"
 import { generateFlashcards } from "@/lib/ai-client"
 import { readFileContent } from "@/lib/gemini"
+import { generateSpacedRepetitionSchedule } from "@/lib/utils"
+import { toast } from "sonner"
 
 export default function FlashcardsPage() {
   const router = useRouter()
@@ -25,8 +27,28 @@ export default function FlashcardsPage() {
   const [showAIGenerate, setShowAIGenerate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [newDeck, setNewDeck] = useState({ name: "", subject: "" })
+  const [studyMode, setStudyMode] = useState<"normal" | "spaced">("normal")
+  const [spacedSchedule, setSpacedSchedule] = useState<any[]>([])
+  const startSpacedRepetition = () => {
+    if (cards.length === 0) return
+    
+    const schedule = generateSpacedRepetitionSchedule(
+      cards.map(card => ({
+        id: card.id,
+        lastReviewed: card.lastReviewed || new Date(0),
+        difficulty: card.difficulty === "easy" ? 1 : card.difficulty === "hard" ? 3 : 2,
+        correctStreak: 0,
+        totalAttempts: 0
+      }))
+    )
+    
+    setSpacedSchedule(schedule)
+    setStudyMode("spaced")
+    setCurrentIndex(0)
+    setIsFlipped(false)
+  }
   const [newCard, setNewCard] = useState({ front: "", back: "", difficulty: "medium" as "easy" | "medium" | "hard" })
+  const [newDeck, setNewDeck] = useState({ name: "", subject: "" })
   const [aiConfig, setAiConfig] = useState({ 
     topic: "", 
     count: 5, 
@@ -162,16 +184,30 @@ export default function FlashcardsPage() {
     try {
       let generatedCards: { front: string; back: string }[]
       
-      // Determine content source - prioritize file content
-      const content = (aiConfig.sourceType === "text" || aiConfig.sourceType === "file") 
-        ? aiConfig.sourceContent 
-        : ""
+      // Determine content source
+      let content = ""
+      let topic = aiConfig.topic
       
-      // Get topic from input or file names
-      const topic = aiConfig.topic || 
-        (uploadedFiles.length > 0 
+      if (aiConfig.sourceType === "material" && aiConfig.selectedMaterialId) {
+        // Get content from selected material
+        const selectedMaterial = materials.find(m => m.id === aiConfig.selectedMaterialId)
+        if (selectedMaterial && selectedMaterial.content) {
+          content = selectedMaterial.content
+          topic = topic || selectedMaterial.title || selectedMaterial.subject || "Study Material"
+        } else {
+          alert("Selected material not found or has no content.")
+          return
+        }
+      } else if (aiConfig.sourceType === "text" || aiConfig.sourceType === "file") {
+        content = aiConfig.sourceContent
+      }
+      
+      // Fallback topic
+      if (!topic) {
+        topic = uploadedFiles.length > 0 
           ? uploadedFiles.map(f => f.name.replace(/\.[^/.]+$/, "")).join(", ") 
-          : "Study Material")
+          : "Study Material"
+      }
       
       console.log("Generating flashcards with content length:", content.length)
       console.log("Topic:", topic)
@@ -198,17 +234,36 @@ export default function FlashcardsPage() {
       // Refresh cards
       const updatedCards = await getFlashcards(selectedDeck.id)
       setCards(updatedCards)
-      
+
       // Update deck in decks list
       const updatedDecks = await getFlashcardDecks(user.uid)
       setDecks(updatedDecks)
-      
+
       setShowAIGenerate(false)
       resetAiConfig()
-      alert(`Successfully generated ${generatedCards.length} flashcards with Gemini AI!`)
+
+      // Success toast with navigation
+      toast.success(`Successfully generated ${generatedCards.length} flashcards!`, {
+        description: "Your new flashcards are ready to study.",
+        duration: 4000,
+        action: {
+          label: "Start Studying",
+          onClick: () => {
+            // Stay on current deck since we added cards to selectedDeck
+            setSelectedDeck(selectedDeck)
+          }
+        }
+      })
     } catch (error: any) {
       console.error("Error generating flashcards:", error)
-      alert("Error generating flashcards: " + (error?.message || "Unknown error"))
+      toast.error("Failed to generate flashcards", {
+        description: error?.message || "Please try again or check your input.",
+        duration: 5000,
+        action: {
+          label: "Try Again",
+          onClick: () => generateAIFlashcards()
+        }
+      })
     } finally {
       setGenerating(false)
     }
@@ -349,9 +404,43 @@ export default function FlashcardsPage() {
     setIsFlipped(false)
   }
 
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only handle keyboard when not typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault()
+          setIsFlipped(!isFlipped)
+          break
+        case 'ArrowRight':
+          e.preventDefault()
+          nextCard()
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          prevCard()
+          break
+        case 'r':
+        case 'R':
+          e.preventDefault()
+          setCurrentIndex(0)
+          setIsFlipped(false)
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [currentIndex, isFlipped, cards.length])
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-background flex items-center justify-center">
+      <main className="min-h-screen bg-slate-900 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </main>
     )
@@ -360,13 +449,14 @@ export default function FlashcardsPage() {
   if (!user) return null
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-slate-900 text-slate-100">
       <Navigation />
 
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-12">
         <div className="mb-12">
-          <h1 className="text-4xl font-serif font-bold text-foreground mb-4">Flashcards</h1>
-          <p className="text-muted-foreground">Study with flashcards</p>
+          <h1 className="text-4xl font-serif font-bold text-slate-100 mb-2">Flashcards</h1>
+          <p className="text-slate-400 mb-4">Create and review flashcards to master key concepts</p>
+          <p className="text-slate-400">Study with flashcards</p>
         </div>
 
         {!selectedDeck ? (
@@ -377,20 +467,20 @@ export default function FlashcardsPage() {
                 <div
                   key={deck.id}
                   onClick={() => handleSelectDeck(deck)}
-                  className="p-6 rounded-lg bg-card border border-border hover:border-primary/50 cursor-pointer transition-all"
+                  className="p-6 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-primary/50 cursor-pointer transition-all"
                 >
-                  <h3 className="font-semibold text-foreground mb-2">{deck.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-2">{deck.subject}</p>
+                  <h3 className="font-semibold text-slate-100 mb-2">{deck.name}</h3>
+                  <p className="text-sm text-slate-400 mb-2">{deck.subject}</p>
                   <p className="text-xs text-primary">{deck.cardCount} cards</p>
                 </div>
               ))}
             </div>
 
             {/* Create New Deck */}
-            <div className="p-8 rounded-lg bg-muted border border-border text-center">
+            <div className="p-8 rounded-lg bg-slate-800/50 border border-slate-700 text-center">
               <Plus className="w-8 h-8 text-primary mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">Create New Deck</h3>
-              <p className="text-muted-foreground mb-6">Create a new flashcard deck</p>
+              <h3 className="text-lg font-semibold text-slate-100 mb-2">Create New Deck</h3>
+              <p className="text-slate-400 mb-6">Create a new flashcard deck</p>
               <Button onClick={() => setShowCreateDeck(true)}>Create Deck</Button>
             </div>
           </>
@@ -402,7 +492,7 @@ export default function FlashcardsPage() {
             </Button>
 
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold text-foreground">{selectedDeck.name}</h2>
+              <h2 className="text-2xl font-semibold text-slate-100">{selectedDeck.name}</h2>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setShowAIGenerate(true)} className="border-primary/50 text-primary hover:bg-primary/10">
                   <Sparkles className="w-4 h-4 mr-2" /> AI Generate
@@ -415,7 +505,7 @@ export default function FlashcardsPage() {
 
             {cards.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-muted-foreground mb-4">No cards in this deck yet</p>
+                <p className="text-slate-400 mb-4">No cards in this deck yet</p>
                 <Button onClick={() => setShowAddCard(true)}>Add First Card</Button>
               </div>
             ) : (
@@ -427,20 +517,36 @@ export default function FlashcardsPage() {
                     className="min-h-80 max-h-[500px] rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 border-2 border-primary/30 cursor-pointer flex items-center justify-center p-8 hover:shadow-lg transition-all overflow-hidden"
                   >
                     <div className="text-center w-full max-w-3xl">
-                      <p className="text-sm text-muted-foreground mb-4">
+                      <p className="text-sm text-slate-400 mb-4">
                         {isFlipped ? "Answer" : "Question"} ({currentIndex + 1}/{cards.length})
                       </p>
                       <div className="max-h-60 overflow-y-auto px-4">
-                        <p className="text-xl md:text-2xl lg:text-3xl font-serif font-bold text-foreground leading-relaxed">
+                        <p className="text-xl md:text-2xl lg:text-3xl font-serif font-bold text-slate-100 leading-relaxed">
                           {isFlipped ? cards[currentIndex].back : cards[currentIndex].front}
                         </p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-6">Click to flip</p>
+                      <p className="text-xs text-muted-foreground mt-6">
+                        Click to flip • Space to flip • ← → to navigate • R to reset
+                      </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Controls */}
+                <div className="flex justify-center gap-4 mb-4">
+                  <Button 
+                    variant={studyMode === "normal" ? "default" : "outline"} 
+                    onClick={() => setStudyMode("normal")}
+                  >
+                    Normal
+                  </Button>
+                  <Button 
+                    variant={studyMode === "spaced" ? "default" : "outline"} 
+                    onClick={startSpacedRepetition}
+                  >
+                    Spaced Repetition
+                  </Button>
+                </div>
                 <div className="flex justify-center gap-4">
                   <Button variant="outline" onClick={prevCard}>Previous</Button>
                   <Button onClick={nextCard}>Next</Button>

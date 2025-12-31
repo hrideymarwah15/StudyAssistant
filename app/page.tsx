@@ -18,7 +18,7 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        router.push("/materials")
+        router.push("/dashboard")
       } else {
         setLoading(false)
       }
@@ -28,25 +28,25 @@ export default function Home() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <main className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background via-background to-muted">
+    <main className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800">
       <Navigation />
       <HeroSection />
 
       {/* Features Section */}
-      <section id="features" className="py-20 px-4 md:px-8 bg-background">
+      <section id="features" className="py-20 px-4 md:px-8 bg-slate-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-serif font-bold text-foreground mb-4">
+            <h2 className="text-4xl md:text-5xl font-serif font-bold text-slate-100 mb-4">
               Everything You Need to Study Better
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-slate-400 max-w-2xl mx-auto">
               From organizing notes to acing exams, StudyPal has you covered
             </p>
           </div>

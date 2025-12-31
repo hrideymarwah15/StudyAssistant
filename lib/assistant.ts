@@ -1,6 +1,7 @@
 "use client"
 
 import { chat, generateFlashcards, generateQuiz, summarizeContent, explainConcept, Message } from "./ai-client"
+import { getMaterials } from "./firestore"
 
 // ==================== INTENT DETECTION ====================
 export type Intent =
@@ -277,19 +278,40 @@ export async function executeCommand(
       }
 
     case "create_flashcards":
-      if (command.entities.topic) {
+      if (command.entities.topic && context.userId) {
         try {
           const count = command.entities.count || 5
           const difficulty = command.entities.difficulty || "medium"
+          
+          // Try to find relevant materials for the topic
+          const userMaterials = await getMaterials(context.userId)
+          const relevantMaterials = userMaterials.filter(m => 
+            m.title?.toLowerCase().includes(command.entities.topic!.toLowerCase()) ||
+            m.subject?.toLowerCase().includes(command.entities.topic!.toLowerCase()) ||
+            m.content?.toLowerCase().includes(command.entities.topic!.toLowerCase())
+          )
+          
+          let content = ""
+          let topic = command.entities.topic
+          
+          if (relevantMaterials.length > 0) {
+            // Use the most relevant material's content
+            const bestMatch = relevantMaterials[0]
+            content = bestMatch.content || ""
+            topic = bestMatch.title || bestMatch.subject || command.entities.topic
+          }
+          
           const flashcards = await generateFlashcards(
-            "",
-            command.entities.topic,
+            content,
+            topic,
             count,
             difficulty
           )
           return {
             success: true,
-            message: `I've created ${flashcards.length} flashcards about "${command.entities.topic}".`,
+            message: relevantMaterials.length > 0 
+              ? `I've created ${flashcards.length} flashcards about "${topic}" using your study materials.`
+              : `I've created ${flashcards.length} flashcards about "${command.entities.topic}".`,
             action: {
               type: "show_flashcards",
               data: { flashcards, topic: command.entities.topic }
@@ -308,12 +330,32 @@ export async function executeCommand(
       }
 
     case "quiz_me":
-      if (command.entities.topic) {
+      if (command.entities.topic && context.userId) {
         try {
-          const quiz = await generateQuiz(command.entities.topic, 5)
+          // Try to find relevant materials for the topic
+          const userMaterials = await getMaterials(context.userId)
+          const relevantMaterials = userMaterials.filter(m => 
+            m.title?.toLowerCase().includes(command.entities.topic!.toLowerCase()) ||
+            m.subject?.toLowerCase().includes(command.entities.topic!.toLowerCase()) ||
+            m.content?.toLowerCase().includes(command.entities.topic!.toLowerCase())
+          )
+          
+          let content = ""
+          let topic = command.entities.topic
+          
+          if (relevantMaterials.length > 0) {
+            // Use the most relevant material's content
+            const bestMatch = relevantMaterials[0]
+            content = bestMatch.content || ""
+            topic = bestMatch.title || bestMatch.subject || command.entities.topic
+          }
+          
+          const quiz = await generateQuiz(content, topic, 5)
           return {
             success: true,
-            message: `Let's quiz you on "${command.entities.topic}"! I have ${quiz.length} questions ready.`,
+            message: relevantMaterials.length > 0 
+              ? `Let's quiz you on "${topic}" using your study materials! I have ${quiz.length} questions ready.`
+              : `Let's quiz you on "${command.entities.topic}"! I have ${quiz.length} questions ready.`,
             action: {
               type: "show_quiz",
               data: { quiz, topic: command.entities.topic }

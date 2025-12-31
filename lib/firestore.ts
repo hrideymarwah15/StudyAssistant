@@ -47,6 +47,11 @@ export interface Flashcard {
   difficulty: "easy" | "medium" | "hard"
   deckId: string
   userId: string
+  createdAt: Date
+  lastReviewed?: Date
+  nextReview?: Date
+  reviewCount?: number
+  easeFactor?: number
 }
 
 export interface FlashcardDeck {
@@ -67,6 +72,8 @@ export interface StudyTask {
   hours: number
   dueDate: Date
   userId: string
+  priority: "low" | "medium" | "high"
+  status: "pending" | "in-progress" | "completed"
 }
 
 export interface StudyPlan {
@@ -82,15 +89,26 @@ export interface StudyPlan {
   totalTasks: number
 }
 
+export interface GroupMember {
+  userId: string
+  displayName: string
+  email: string
+  role: "admin" | "member"
+  joinedAt: Date
+  avatarUrl?: string
+}
+
 export interface StudyGroup {
   id: string
   name: string
   subject: string
   description: string
-  members: string[]
+  members: GroupMember[]
   memberCount: number
   createdBy: string
   createdAt: Date
+  maxMembers?: number
+  isPrivate?: boolean
 }
 
 export interface GroupMessage {
@@ -156,6 +174,9 @@ export interface Task {
   status: "todo" | "in-progress" | "done" | "blocked"
   tags: string[] // e.g., ["DSA", "project", "CP", "gym"]
   course?: string
+  topic?: string
+  type?: "Assignment" | "Revision" | "Practice" | "Reading" | "Project" | "Exam Prep" | "Other"
+  difficulty?: "Easy" | "Medium" | "Hard"
   estimatedMinutes: number
   actualMinutes?: number
   dueDate?: Date
@@ -203,6 +224,7 @@ export interface CalendarEvent {
   color?: string
   reminders?: number[] // Minutes before event
   meetingLink?: string
+  isOnline?: boolean
   createdAt: Date
 }
 
@@ -464,8 +486,11 @@ export async function getFlashcards(deckId: string): Promise<Flashcard[]> {
     .filter(c => c.deckId === deckId)
 }
 
-export async function addFlashcard(card: Omit<Flashcard, "id">): Promise<string> {
-  const docRef = await addDoc(collection(db, "flashcards"), card)
+export async function addFlashcard(card: Omit<Flashcard, "id" | "createdAt">): Promise<string> {
+  const docRef = await addDoc(collection(db, "flashcards"), {
+    ...card,
+    createdAt: new Date()
+  })
   // Update deck card count
   const deckRef = doc(db, "flashcardDecks", card.deckId)
   const deckSnap = await getDoc(deckRef)
@@ -532,7 +557,9 @@ export async function getStudyTasks(userId: string, planId?: string): Promise<St
       return {
         id: docSnap.id,
         ...data,
-        dueDate: data.dueDate?.toDate() || new Date()
+        dueDate: data.dueDate?.toDate() || new Date(),
+        priority: data.priority || "medium",
+        status: data.status || "pending"
       } as StudyTask
     })
     .filter(t => t.userId === userId && (!planId || t.planId === planId))
@@ -573,13 +600,21 @@ export async function clearPlanTasks(planId: string): Promise<void> {
 }
 
 // Study Groups Functions
-export async function getStudyGroups(): Promise<StudyGroup[]> {
+export async function getStudyGroups(userId?: string): Promise<StudyGroup[]> {
   const snapshot = await getDocs(collection(db, "studyGroups"))
-  const groups = snapshot.docs.map(doc => ({
+  let groups = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
     createdAt: doc.data().createdAt?.toDate() || new Date()
   })) as StudyGroup[]
+
+  // Filter groups where user is a member if userId is provided
+  if (userId) {
+    groups = groups.filter(group =>
+      group.members.some((member: GroupMember) => member.userId === userId)
+    )
+  }
+
   // Sort client-side to avoid index requirement
   return groups.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 }
@@ -603,14 +638,21 @@ export async function createStudyGroup(group: Omit<StudyGroup, "id" | "createdAt
   return docRef.id
 }
 
-export async function joinGroup(groupId: string, userId: string): Promise<void> {
+export async function joinGroup(groupId: string, member: GroupMember): Promise<void> {
   const groupRef = doc(db, "studyGroups", groupId)
   const groupSnap = await getDoc(groupRef)
   if (groupSnap.exists()) {
-    const members = groupSnap.data().members || []
-    if (!members.includes(userId)) {
+    const groupData = groupSnap.data()
+    const members = groupData.members || []
+
+    // Check if group is full
+    if (members.length >= (groupData.maxMembers || 10)) {
+      throw new Error("Group is full")
+    }
+
+    if (!members.some((m: GroupMember) => m.userId === member.userId)) {
       await updateDoc(groupRef, {
-        members: [...members, userId],
+        members: [...members, member],
         memberCount: members.length + 1
       })
     }
@@ -1231,4 +1273,60 @@ export async function updateTimeBlock(blockId: string, updates: Partial<TimeBloc
 
 export async function deleteTimeBlock(blockId: string): Promise<void> {
   await deleteDoc(doc(db, "timeBlocks", blockId))
+}
+
+// ==================== FLASHCARDS ====================
+export async function createFlashcards(
+  userId: string,
+  cards: Omit<Flashcard, "id" | "userId" | "createdAt">[],
+): Promise<Flashcard[]> {
+  const flashcardsRef = collection(db, "flashcards")
+  const createdCards: Flashcard[] = []
+
+  for (const cardData of cards) {
+    const docRef = doc(flashcardsRef)
+    const card: Flashcard = {
+      id: docRef.id,
+      userId,
+      ...cardData,
+      createdAt: new Date(),
+    }
+    await setDoc(docRef, card)
+    createdCards.push(card)
+  }
+
+  return createdCards
+}
+
+// ==================== USER DATA AGGREGATION ====================
+export async function getUserData(userId: string): Promise<{
+  tasks: Task[]
+  courses: Course[]
+  habits: Habit[]
+  dailyStats: DailyStats | null
+  userStreak: number
+}> {
+  const [tasks, courses, habits] = await Promise.all([
+    getTasks(userId),
+    getCourses(userId),
+    getHabits(userId)
+  ])
+
+  // Get today's stats
+  const today = new Date().toISOString().split('T')[0]
+  const dailyStats = await getDailyStats(userId, today)
+
+  // Calculate user streak (simplified - could be more sophisticated)
+  let userStreak = 0
+  if (dailyStats) {
+    userStreak = dailyStats.streakDay
+  }
+
+  return {
+    tasks,
+    courses,
+    habits,
+    dailyStats,
+    userStreak
+  }
 }
