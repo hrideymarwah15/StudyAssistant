@@ -1,24 +1,15 @@
-# Render Deployment Configuration
-
-# This file configures Render deployment for your Python backend
-
-# Build Command
-buildCommand: "pip install -r requirements.txt"
-
-# Start Command
-startCommand: "python app.py"
-
-# Python Version
-pythonVersion: "3.11"
-
-# Environment Variables (set in Render dashboard):
-# QDRANT_URL=https://your-qdrant-instance.onrender.com
-# OLLAMA_BASE_URL=https://your-ollama-instance.onrender.com
-# NEXT_PUBLIC_API_URL=https://your-frontend-url.netlify.app
-
-# Health Check
-healthCheckPath: "/health"
-healthCheckTimeout: 300
-
-# Auto-Deploy
-autoDeploy: true
+services:
+  - type: web
+    name: study-assistant-backend
+    runtime: python
+    repo: https://github.com/hrideymarwah15/StudyAssistant
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements-minimal.txt
+    startCommand: python app_production.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PORT
+        value: "8000"
+    healthCheckPath: /health
