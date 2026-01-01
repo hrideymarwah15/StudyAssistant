@@ -2,7 +2,7 @@
 
 import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
-import { Upload, Search, Filter, BookOpen, FileText, ImageIcon, Loader2, Trash2, FolderPlus, Folder, FolderOpen, ArrowLeft, MoreVertical, X } from "lucide-react"
+import { Upload, Search, Filter, BookOpen, FileText, ImageIcon, Loader2, Trash2, FolderPlus, Folder, FolderOpen, ArrowLeft, MoreVertical, X, Brain, Sparkles, FileBox, Grid3X3, List, Clock, SortAsc } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { onAuthStateChanged, type User } from "firebase/auth"
@@ -14,6 +14,12 @@ import {
 } from "@/lib/firestore"
 import { MaterialProcessor } from "@/components/materials/MaterialProcessor"
 import { processMaterial } from "@/lib/api-client"
+import { addMaterial as addToMemory, generateFlashcards } from "@/lib/api"
+import { toast } from "sonner"
+
+type ViewMode = "grid" | "list"
+type SortBy = "recent" | "name" | "type"
+type FilterTab = "all" | "pdf" | "image" | "text"
 
 const FOLDER_COLORS = [
   "#3b82f6", // blue
@@ -41,16 +47,86 @@ export default function MaterialsPage() {
   const [movingMaterial, setMovingMaterial] = useState<Material | null>(null)
   const [aiSummaries, setAiSummaries] = useState<{ [materialId: string]: string }>({})
   const [generatingSummary, setGeneratingSummary] = useState<string | null>(null)
+  const [storingToMemory, setStoringToMemory] = useState<string | null>(null)
+  const [generatingCards, setGeneratingCards] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("grid")
+  const [sortBy, setSortBy] = useState<SortBy>("recent")
+  const [filterTab, setFilterTab] = useState<FilterTab>("all")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Store material to AI memory
+  const storeToMemory = async (material: Material) => {
+    if (!material.content) {
+      toast.error("No content to store")
+      return
+    }
+    
+    setStoringToMemory(material.id)
+    try {
+      await addToMemory({
+        text: material.content,
+        course: material.subject,
+        topic: material.title,
+        source: "materials"
+      })
+      toast.success("Stored to AI memory", {
+        description: "This material is now available for AI-assisted learning"
+      })
+    } catch (error) {
+      console.error("Error storing to memory:", error)
+      toast.error("Failed to store", {
+        description: "Backend may be offline. Try again later."
+      })
+    } finally {
+      setStoringToMemory(null)
+    }
+  }
+
+  // Generate flashcards from material
+  const createFlashcardsFromMaterial = async (material: Material) => {
+    if (!material.content) {
+      toast.error("No content to generate flashcards from")
+      return
+    }
+    
+    setGeneratingCards(material.id)
+    try {
+      const result = await generateFlashcards({
+        text: material.content,
+        topic: material.title,
+        num_cards: 5
+      })
+      toast.success(`Generated ${result.count} flashcards!`, {
+        description: "Go to Flashcards to review them",
+        action: {
+          label: "View",
+          onClick: () => router.push("/flashcards")
+        }
+      })
+    } catch (error) {
+      console.error("Error generating flashcards:", error)
+      toast.error("Failed to generate flashcards", {
+        description: "Backend may be offline. Try again later."
+      })
+    } finally {
+      setGeneratingCards(null)
+    }
+  }
+
   const generateSummary = async (material: Material) => {
-    if (!material.content) return
+    if (!material.content) {
+      toast.error("No content to summarize")
+      return
+    }
     
     setGeneratingSummary(material.id)
     try {
       const result = await processMaterial(material.content, { generateSummary: true })
       setAiSummaries(prev => ({ ...prev, [material.id]: result.summary || "No summary generated" }))
+      toast.success("Summary generated!")
     } catch (error) {
       console.error("Error generating summary:", error)
+      toast.error("Failed to generate summary")
     } finally {
       setGeneratingSummary(null)
     }
@@ -187,10 +263,24 @@ export default function MaterialsPage() {
     }
   }
 
-  const filteredMaterials = materials.filter(m => 
-    m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.subject.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredMaterials = materials.filter(m => {
+    const matchesSearch = m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.subject.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesFilter = filterTab === "all" || m.type === filterTab
+    return matchesSearch && matchesFilter
+  })
+
+  const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+    switch (sortBy) {
+      case "name":
+        return a.title.localeCompare(b.title)
+      case "type":
+        return a.type.localeCompare(b.type)
+      case "recent":
+      default:
+        return b.createdAt.getTime() - a.createdAt.getTime()
+    }
+  })
 
   const filteredFolders = folders.filter(f =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -285,8 +375,8 @@ export default function MaterialsPage() {
           }} />
         </div>
 
-        {/* Search */}
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
+        {/* Search and Filter Bar */}
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 relative">
             <Search className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
             <input
@@ -297,6 +387,66 @@ export default function MaterialsPage() {
               className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-700 border border-slate-600 focus:border-slate-500 outline-none transition-colors text-slate-100"
             />
           </div>
+          
+          {/* View & Sort Controls */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-700 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-2 rounded ${viewMode === "grid" ? "bg-slate-600 text-white" : "text-slate-400 hover:text-slate-200"}`}
+                title="Grid view"
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded ${viewMode === "list" ? "bg-slate-600 text-white" : "text-slate-400 hover:text-slate-200"}`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortBy)}
+              className="px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 text-sm"
+            >
+              <option value="recent">Recent</option>
+              <option value="name">Name</option>
+              <option value="type">Type</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 mb-8 border-b border-slate-700 pb-4">
+          {[
+            { key: "all", label: "All Files", icon: FileBox, count: materials.length },
+            { key: "pdf", label: "PDFs", icon: FileText, count: materials.filter(m => m.type === "pdf").length },
+            { key: "image", label: "Images", icon: ImageIcon, count: materials.filter(m => m.type === "image").length },
+            { key: "text", label: "Text", icon: BookOpen, count: materials.filter(m => m.type === "text").length },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilterTab(tab.key as FilterTab)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                filterTab === tab.key 
+                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" 
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              <span className="text-sm font-medium">{tab.label}</span>
+              {tab.count > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  filterTab === tab.key ? "bg-blue-500/30" : "bg-slate-600"
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Folders Grid (only in root) */}
@@ -339,11 +489,11 @@ export default function MaterialsPage() {
             {filteredFolders.length > 0 ? "Files" : "All Materials"}
           </h2>}
           
-          {filteredMaterials.length === 0 && filteredFolders.length === 0 ? (
+          {sortedMaterials.length === 0 && filteredFolders.length === 0 ? (
             <div className="text-center py-16">
               <BookOpen className="w-16 h-16 text-slate-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-100 mb-2">
-                {currentFolder ? "This folder is empty" : "No materials yet"}
+                {currentFolder ? "This folder is empty" : filterTab !== "all" ? `No ${filterTab} files` : "No materials yet"}
               </h3>
               <p className="text-slate-400 mb-6">
                 {currentFolder ? "Upload files to this folder" : "Upload your first study material to get started!"}
@@ -353,13 +503,13 @@ export default function MaterialsPage() {
                 Upload Materials
               </Button>
             </div>
-          ) : filteredMaterials.length === 0 ? (
+          ) : sortedMaterials.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
-              No files in {currentFolder ? "this folder" : "root"}
+              {filterTab !== "all" ? `No ${filterTab} files` : `No files in ${currentFolder ? "this folder" : "root"}`}
             </div>
-          ) : (
+          ) : viewMode === "grid" ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredMaterials.map((material) => (
+              {sortedMaterials.map((material) => (
                 <div
                   key={material.id}
                   className="p-6 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 hover:shadow-lg transition-all group"
@@ -392,18 +542,46 @@ export default function MaterialsPage() {
                     <span>{material.createdAt.toLocaleDateString()}</span>
                   </div>
                   
-                  {/* AI Summary */}
+                  {/* AI Actions */}
                   {material.content && (
-                    <div className="mb-4">
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => storeToMemory(material)}
+                          disabled={storingToMemory === material.id}
+                          className="text-xs border-slate-600 text-slate-300 hover:bg-slate-700"
+                        >
+                          {storingToMemory === material.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <><Brain className="w-3 h-3 mr-1" /> Store to AI</>
+                          )}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => createFlashcardsFromMaterial(material)}
+                          disabled={generatingCards === material.id}
+                          className="text-xs border-slate-600 text-slate-300 hover:bg-slate-700"
+                        >
+                          {generatingCards === material.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <><Sparkles className="w-3 h-3 mr-1" /> Flashcards</>
+                          )}
+                        </Button>
+                      </div>
                       <Button 
                         size="sm" 
                         variant="ghost" 
                         onClick={() => generateSummary(material)}
                         disabled={generatingSummary === material.id}
-                        className="w-full mb-2 border-slate-600 text-slate-300 hover:bg-slate-700"
+                        className="w-full text-xs border-slate-600 text-slate-300 hover:bg-slate-700"
                       >
                         {generatingSummary === material.id ? (
-                          <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                          <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Generating...</>
                         ) : (
                           <>AI Summary</>
                         )}
@@ -426,6 +604,79 @@ export default function MaterialsPage() {
                       View File
                     </Button>
                   )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* List View */
+            <div className="space-y-2">
+              {sortedMaterials.map((material) => (
+                <div
+                  key={material.id}
+                  className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 flex-shrink-0">
+                    {getTypeIcon(material.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-slate-100 truncate">{material.title}</h3>
+                    <div className="flex items-center gap-4 text-sm text-slate-400">
+                      <span className="px-2 py-0.5 bg-slate-700 rounded text-xs">{material.subject}</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {material.createdAt.toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {material.content && (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => storeToMemory(material)}
+                          disabled={storingToMemory === material.id}
+                          className="text-xs text-slate-400 hover:text-blue-400"
+                          title="Store to AI memory"
+                        >
+                          {storingToMemory === material.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Brain className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => createFlashcardsFromMaterial(material)}
+                          disabled={generatingCards === material.id}
+                          className="text-xs text-slate-400 hover:text-purple-400"
+                          title="Generate flashcards"
+                        >
+                          {generatingCards === material.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </>
+                    )}
+                    {!currentFolder && folders.length > 0 && (
+                      <button 
+                        onClick={() => setMovingMaterial(material)}
+                        className="text-slate-400 hover:text-blue-500 transition-all p-1"
+                        title="Move to folder"
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleDelete(material.id)}
+                      className="text-slate-400 hover:text-red-400 transition-all p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

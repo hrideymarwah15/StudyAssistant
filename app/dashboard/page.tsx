@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "@/lib/firebase"
@@ -11,16 +11,13 @@ import {
 import { PomodoroTimer } from "@/components/pomodoro-timer"
 import { Button } from "@/components/ui/button"
 import Layout from "@/components/Layout"
+import { TodayBlock } from "@/components/dashboard/TodayBlock"
 import { NextActions } from "@/components/dashboard/NextActions"
-import { FocusHero } from "@/components/dashboard/FocusHero"
-import { TodayTasks } from "@/components/dashboard/TodayTasks"
-import { TodaySchedule } from "@/components/dashboard/TodaySchedule"
-import { TodayAtGlance } from "@/components/dashboard/TodayAtGlance"
-import { HabitsBlock } from "@/components/dashboard/HabitsBlock"
 import { StreakTracker } from "@/components/dashboard/StreakTracker"
 import { AISystemHealth } from "@/components/dashboard/AISystemHealth"
 import { JarvisAssistant } from "@/components/jarvis-assistant"
 import { usePersistentTasks } from "@/lib/hooks/usePersistentTasks"
+import { toast } from "sonner"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -33,6 +30,8 @@ export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [showPomodoro, setShowPomodoro] = useState(false)
   const [focusTask, setFocusTask] = useState<Task | null>(null)
+  const [jarvisOpen, setJarvisOpen] = useState(false)
+  const jarvisRef = useRef<{ open: () => void } | null>(null)
 
   const { tasks: allTasks, toggleTask } = usePersistentTasks()
 
@@ -68,25 +67,66 @@ export default function DashboardPage() {
         getCourses(userId)
       ])
 
-      // Filter today's tasks from the persistent tasks hook
-      const todaysTasks = allTasks.filter(t =>
-        t.status !== 'done' &&
-        (t.scheduledDate?.toDateString() === today.toDateString() ||
-         t.dueDate?.toDateString() === today.toDateString() ||
-         t.priority === 'urgent')
-      ).slice(0, 5)
-
       setUpcomingEvents(events.slice(0, 4))
       setHabits(userHabits)
       setDailyStats(stats)
       setCourses(userCourses)
 
       // Set focus task to highest priority incomplete task
+      const todaysTasks = allTasks.filter(t =>
+        t.status !== 'done' &&
+        (t.scheduledDate?.toDateString() === today.toDateString() ||
+         t.dueDate?.toDateString() === today.toDateString() ||
+         t.priority === 'urgent')
+      ).slice(0, 5)
+      
       const highPriorityTask = todaysTasks.find(t => t.status === 'in-progress') || todaysTasks[0]
       if (highPriorityTask) setFocusTask(highPriorityTask)
     } catch (error) {
       console.error("Error loading dashboard:", error)
     }
+  }
+
+  // Get today's tasks
+  const todaysTasks = allTasks.filter(t =>
+    t.scheduledDate?.toDateString() === new Date().toDateString() ||
+    t.dueDate?.toDateString() === new Date().toDateString() ||
+    t.priority === 'urgent'
+  ).slice(0, 8)
+
+  // Handle task toggle with toast feedback
+  const handleTaskToggle = async (taskId: string, done: boolean) => {
+    try {
+      await toggleTask(taskId, done)
+      toast.success(done ? "Task completed! 🎉" : "Task reopened")
+    } catch (error) {
+      toast.error("Failed to update task")
+    }
+  }
+
+  // Handle habit toggle with toast feedback
+  const handleHabitToggle = async (habitId: string) => {
+    if (!user) return
+    try {
+      await toggleHabitCompletion(user.uid, habitId)
+      const updatedHabits = await getHabits(user.uid)
+      setHabits(updatedHabits)
+      
+      const habit = habits.find(h => h.id === habitId)
+      const todayDateStr = new Date().toISOString().split('T')[0]
+      const wasCompleted = habit?.completions?.some(c => c.date === todayDateStr && c.completed)
+      
+      toast.success(wasCompleted ? "Habit unchecked" : "Habit completed! 💪")
+    } catch (error) {
+      console.error("Error toggling habit:", error)
+      toast.error("Failed to update habit")
+    }
+  }
+
+  // Open JARVIS for AI planning
+  const openJarvisForPlanning = () => {
+    setJarvisOpen(true)
+    // The JarvisAssistant component will handle its own state
   }
 
   if (loading) {
@@ -97,101 +137,43 @@ export default function DashboardPage() {
     )
   }
 
-  const todayDateStr = new Date().toISOString().split('T')[0]
-  const todayHabitsCompleted = habits.filter(h => 
-    h.completions.some(c => c.date === todayDateStr && c.completed)
-  ).length
-
   return (
     <Layout 
       title="Dashboard" 
-      subtitle="Your study command center – track progress, start sessions, and get AI-powered insights"
+      subtitle="Your study command center"
     >
-      {/* 2. Today at a Glance */}
-      <TodayAtGlance />
-
-      {/* Streak Tracker */}
-      <StreakTracker />
-
-      {/* 3. Next Best Actions */}
-      <NextActions onStartFocus={() => setShowPomodoro(true)} />
-
-      {/* 4. Focus Mode */}
-      <FocusHero
-        courses={courses}
-        todayTasks={allTasks.filter((t: Task) =>
-          t.status !== 'done' &&
-          (t.scheduledDate?.toDateString() === new Date().toDateString() ||
-           t.dueDate?.toDateString() === new Date().toDateString() ||
-           t.priority === 'urgent')
-        ).slice(0, 5)}
-        onStartFocus={(courseId, taskId) => {
-          const filteredTasks = allTasks.filter((t: Task) =>
-            t.status !== 'done' &&
-            (t.scheduledDate?.toDateString() === new Date().toDateString() ||
-             t.dueDate?.toDateString() === new Date().toDateString() ||
-             t.priority === 'urgent')
-          ).slice(0, 5)
-          const selectedTask = filteredTasks.find((t: Task) => t.id === taskId)
-          setFocusTask(selectedTask || null)
-          setShowPomodoro(true)
-        }}
-        onAddQuickTask={() => setFocusTask(null)}
-      />
-
-      {/* 5. Today Tasks */}
-      <TodayTasks
-        tasks={allTasks.filter(t =>
-          t.status !== 'done' &&
-          (t.scheduledDate?.toDateString() === new Date().toDateString() ||
-           t.dueDate?.toDateString() === new Date().toDateString() ||
-           t.priority === 'urgent')
-        ).slice(0, 5)}
-        onTaskClick={setFocusTask}
-        onTaskUpdate={async (updatedTask) => {
-          // Use the persistent tasks hook to update
-          if (updatedTask.status === 'done') {
-            await toggleTask(updatedTask.id, true)
-          } else {
-            await toggleTask(updatedTask.id, false)
-          }
-        }}
-      />
-
-      {/* 6. Today Schedule */}
-      <TodaySchedule events={upcomingEvents} />
-
-      {/* 7. Habits */}
-      <HabitsBlock
+      {/* Combined Today Block - Tasks, Schedule, Habits */}
+      <TodayBlock
+        tasks={todaysTasks}
+        events={upcomingEvents}
         habits={habits}
-        onToggleHabit={async (habitId) => {
-          if (!user) return
-          try {
-            await toggleHabitCompletion(user.uid, habitId)
-            // Refresh habits
-            const updatedHabits = await getHabits(user.uid)
-            setHabits(updatedHabits)
-          } catch (error) {
-            console.error("Error toggling habit:", error)
-          }
-        }}
-        onManageHabits={() => router.push('/habits')}
-        onAddHabit={() => router.push('/habits')}
+        onStartFocus={() => setShowPomodoro(true)}
+        onTaskClick={setFocusTask}
+        onTaskToggle={handleTaskToggle}
+        onHabitToggle={handleHabitToggle}
+        onOpenJarvis={openJarvisForPlanning}
       />
 
-      {/* 8. AI System Health */}
-      <AISystemHealth />
+      {/* Streak Tracker - Motivational Banner */}
+      <div className="mt-6">
+        <StreakTracker />
+      </div>
 
-      {/* 9. JARVIS Dock */}
+      {/* Next Best Actions */}
+      <div className="mt-6">
+        <NextActions onStartFocus={() => setShowPomodoro(true)} />
+      </div>
+
+      {/* AI System Health - Compact */}
+      <div className="mt-6">
+        <AISystemHealth />
+      </div>
+
+      {/* JARVIS Dock - Single Instance */}
       <JarvisAssistant
         context={{
           currentPage: 'dashboard',
-          todayTasks: allTasks.filter(t =>
-            t.status !== 'done' &&
-            (t.scheduledDate?.toDateString() === new Date().toDateString() ||
-             t.dueDate?.toDateString() === new Date().toDateString() ||
-             t.priority === 'urgent')
-          ),
+          todayTasks: todaysTasks,
           courses,
           habits,
           dailyStats: dailyStats || undefined

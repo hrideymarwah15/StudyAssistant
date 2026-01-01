@@ -20,7 +20,9 @@ import {
   type Habit,
   type DailyStats
 } from "@/lib/firestore"
-import { BookOpen, Target, Lightbulb, Navigation } from "lucide-react"
+import { askAI, generateFlashcards, createStudyPlan, isBackendAvailable, type AskResponse } from "@/lib/api"
+import { BookOpen, Target, Lightbulb, Navigation, Wifi, WifiOff } from "lucide-react"
+import { toast } from "sonner"
 
 interface ChatMessage {
   id: string
@@ -63,9 +65,22 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
   const [voiceNotes, setVoiceNotes] = useState<string>("")
   const [speakOnlyIntro, setSpeakOnlyIntro] = useState(false)
   const [globalVoiceActive, setGlobalVoiceActive] = useState(false)
+  const [backendOnline, setBackendOnline] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Check backend status on mount
+  useEffect(() => {
+    const checkBackend = async () => {
+      const online = await isBackendAvailable()
+      setBackendOnline(online)
+    }
+    checkBackend()
+    // Check every 30 seconds
+    const interval = setInterval(checkBackend, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Voice input hook
   const { state: voiceState, startListening, stopListening, resetTranscript } = useVoiceInput({
@@ -193,13 +208,18 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     let greeting = `Good ${timeOfDay}! I'm JARVIS, your intelligent study assistant.`
     let suggestion = ""
     
+    // Backend status note
+    const backendNote = backendOnline 
+      ? "🟢 AI backend connected — I can answer questions using your study materials!"
+      : "🟡 Running in local mode — start the backend for AI-powered answers."
+    
     // Proactive suggestions based on context
     if (context?.todayTasks && context.todayTasks.length > 0) {
       const urgentTasks = context.todayTasks.filter(t => t.priority === 'urgent')
       const highTasks = context.todayTasks.filter(t => t.priority === 'high')
       
       if (urgentTasks.length > 0) {
-        suggestion = `⚡ You have ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} - shall I help you prioritize?`
+        suggestion = `⚡ You have ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} — shall I help you prioritize?`
       } else if (highTasks.length > 0) {
         suggestion = `📋 ${context.todayTasks.length} tasks today. Ready to start a focus session?`
       } else {
@@ -228,7 +248,7 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
       }
     }
     
-    return `${greeting}\n\n${suggestion}`
+    return `${greeting}\n\n${backendNote}\n\n${suggestion}`
   }
 
   useEffect(() => {
@@ -308,7 +328,87 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     setMessages(prev => [...prev, userMessage])
 
     try {
-      // Use new command parser and executor
+      // Check for special commands first
+      const lowerMessage = messageText.toLowerCase()
+      
+      // Check if it's an AI question that should use the backend
+      const isAIQuestion = lowerMessage.includes("explain") || 
+                          lowerMessage.includes("what is") ||
+                          lowerMessage.includes("how do") ||
+                          lowerMessage.includes("help me understand") ||
+                          lowerMessage.includes("teach me") ||
+                          lowerMessage.includes("tell me about") ||
+                          lowerMessage.includes("summarize") ||
+                          lowerMessage.includes("quiz me") ||
+                          lowerMessage.includes("?")
+
+      const isFlashcardRequest = lowerMessage.includes("flashcard") || 
+                                  lowerMessage.includes("flash card")
+
+      const isStudyPlanRequest = lowerMessage.includes("study plan") || 
+                                  lowerMessage.includes("learning plan") ||
+                                  lowerMessage.includes("create a plan")
+
+      // Try to use backend AI if available and it's a knowledge question
+      if (backendOnline && (isAIQuestion || isFlashcardRequest || isStudyPlanRequest)) {
+        try {
+          if (isFlashcardRequest) {
+            // Extract topic from message
+            const topic = messageText.replace(/flashcard|flash card|create|generate|make|for|about|on/gi, "").trim() || "general knowledge"
+            
+            toast.loading("Generating flashcards...", { id: "flashcards" })
+            const result = await generateFlashcards({
+              topic,
+              num_cards: 5,
+              use_memory: true
+            })
+            toast.success(`Created ${result.count} flashcards!`, { id: "flashcards" })
+            
+            addAssistantMessage(`I've created ${result.count} flashcards on "${topic}"! 🃏\n\nHere's a preview:\n${result.flashcards.slice(0, 2).map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}${result.count > 2 ? `\n\n...and ${result.count - 2} more. Go to Flashcards to review them all!` : ""}`, {
+              type: "navigate",
+              data: { path: "/flashcards" }
+            })
+          } else if (isStudyPlanRequest) {
+            // Extract subject from message
+            const subject = messageText.replace(/study plan|learning plan|create|a|plan|for|about|on/gi, "").trim() || "general studies"
+            
+            toast.loading("Creating your study plan...", { id: "studyplan" })
+            const result = await createStudyPlan({
+              subject,
+              days: 7,
+              retrieve_materials: true
+            })
+            toast.success("Study plan created!", { id: "studyplan" })
+            
+            addAssistantMessage(`📚 Here's your ${result.days}-day study plan for ${result.subject}:\n\n${result.plan}\n\n${result.materials_used > 0 ? `✨ I used ${result.materials_used} of your saved materials to personalize this plan.` : ""}`)
+          } else {
+            // General AI question - use RAG
+            toast.loading("Thinking...", { id: "ai-thinking" })
+            const result = await askAI({
+              question: messageText,
+              use_memory: true,
+              top_k: 5
+            })
+            toast.dismiss("ai-thinking")
+            
+            let response = result.answer
+            if (result.context_used && result.sources_count > 0) {
+              response += `\n\n💡 _Based on ${result.sources_count} source${result.sources_count > 1 ? 's' : ''} from your materials_`
+            }
+            
+            addAssistantMessage(response)
+          }
+          return
+        } catch (error: any) {
+          console.error("Backend AI error:", error)
+          toast.dismiss("ai-thinking")
+          toast.dismiss("flashcards")
+          toast.dismiss("studyplan")
+          // Fall through to local command processing
+        }
+      }
+
+      // Use local command parser and executor for actions
       const commandParser = getCommandParser()
       const commandExecutor = getCommandExecutor()
 
@@ -457,11 +557,15 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Status indicator */}
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-50 border border-green-200/50">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] text-green-600 font-mono">
-                    ACTIVE
+                {/* Backend status indicator */}
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${backendOnline ? "bg-green-50 border border-green-200/50" : "bg-amber-50 border border-amber-200/50"}`}>
+                  {backendOnline ? (
+                    <Wifi className="w-3 h-3 text-green-500" />
+                  ) : (
+                    <WifiOff className="w-3 h-3 text-amber-500" />
+                  )}
+                  <span className={`text-[10px] font-mono ${backendOnline ? "text-green-600" : "text-amber-600"}`}>
+                    {backendOnline ? "AI ONLINE" : "LOCAL MODE"}
                   </span>
                 </div>
 

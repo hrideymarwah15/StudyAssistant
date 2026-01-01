@@ -145,33 +145,48 @@ export function NextActions({ onStartFocus }: NextActionsProps) {
             const isNavigation = rec.action.type === 'navigate' && rec.action.data?.path
             const isFocus = rec.action.type === 'start_focus' || rec.type === 'focus_session'
             
+            // Generate verb-based action label
+            const getActionLabel = () => {
+              switch (rec.type) {
+                case 'focus_session': return 'Start Focus'
+                case 'flashcard_review': return 'Review Cards'
+                case 'study_planning': return 'Open Planner'
+                case 'task': return 'View Task'
+                case 'habit': return 'Complete Habit'
+                default: return 'Take Action'
+              }
+            }
+            
             const content = (
               <div 
-                className={`p-4 rounded-lg bg-muted/30 hover:bg-muted/60 transition-all text-left border border-border/50 hover:border-primary/50 cursor-pointer group ${index === 0 ? 'ring-1 ring-primary/20' : ''}`}
+                className={`p-4 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 transition-all text-left border border-slate-700/50 hover:border-blue-500/50 cursor-pointer group ${index === 0 ? 'ring-1 ring-blue-500/30' : ''}`}
                 onClick={isFocus ? onStartFocus : undefined}
               >
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5">{getActionIcon(rec.type)}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
+                    <p className="font-medium text-white group-hover:text-blue-400 transition-colors truncate">
                       {rec.title}
                     </p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{rec.description}</p>
+                    <p className="text-sm text-slate-400 line-clamp-2">{rec.description}</p>
                     {rec.reasoning && rec.reasoning.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {rec.reasoning.slice(0, 2).map((reason, i) => (
-                          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">
                             {reason}
                           </span>
                         ))}
                       </div>
                     )}
                   </div>
-                  {index === 0 && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-500 font-medium">
-                      Best
-                    </span>
-                  )}
+                  {/* Verb-based action badge */}
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                    index === 0 
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                      : 'bg-slate-700 text-slate-300'
+                  }`}>
+                    {getActionLabel()}
+                  </span>
                 </div>
               </div>
             )

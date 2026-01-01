@@ -1,22 +1,24 @@
 [build]
-  command = "npm install && npm run build"
+  command = "pnpm install && pnpm build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "18"
-  NEXT_PUBLIC_API_URL = "https://your-backend-url.onrender.com"
-  NEXT_PUBLIC_GEMINI_API_KEY = "your_gemini_api_key_here"
+  # Set your production backend URL in Netlify dashboard environment variables
+  # NEXT_PUBLIC_API_URL = "https://your-backend-url.onrender.com"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Redirect rules for SPA
+# Redirect API calls to backend (update with your backend URL in production)
 [[redirects]]
-  from = "/api/*"
-  to = "https://your-backend-url.onrender.com/api/:splat"
+  from = "/api/backend/*"
+  to = "${NEXT_PUBLIC_API_URL}/:splat"
   status = 200
+  force = true
+  headers = {Access-Control-Allow-Origin = "*"}
 
-# Headers for security
+# Headers for security and CORS
 [[headers]]
   for = "/*"
   [headers.values]
@@ -24,3 +26,16 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+# Development context
+[context.development]
+  [context.development.environment]
+    NEXT_PUBLIC_API_URL = "http://localhost:8000"
+
+# Preview deploys
+[context.deploy-preview]
+  [context.deploy-preview.environment]
+    # Use your staging backend URL here
