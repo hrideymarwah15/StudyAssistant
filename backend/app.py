@@ -90,17 +90,30 @@ app = FastAPI(
 
 
 # Configure CORS for frontend integration
+# Only allow specific origins for security
+import os
+
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # Next.js dev
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "https://assistantstudy.netlify.app",  # Production frontend
+    "https://*.ngrok-free.app",  # Ngrok tunnels
+    "https://*.trycloudflare.com",  # Cloudflare tunnels
+]
+
+# Add custom frontend URL from environment
+custom_frontend = os.getenv("FRONTEND_URL")
+if custom_frontend:
+    ALLOWED_ORIGINS.append(custom_frontend)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Next.js dev
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "*"  # Allow all origins (configure stricter in production)
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.ngrok-free\.app|https://.*\.trycloudflare\.com",
 )
 
 
