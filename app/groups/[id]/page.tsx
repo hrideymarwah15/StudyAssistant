@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Send, Users, Settings, Plus, Search, Loader2, ArrowLeft } from "lucide-react"
 import { useState, useRef, useEffect, use } from "react"
@@ -97,9 +97,10 @@ export default function GroupChatPage({ params }: { params: Promise<{ id: string
   if (!user || !group) return null
 
   return (
-    <main className="min-h-screen bg-background">
-      <Navigation />
-
+    <Layout 
+      title={group?.name || "Group Chat"} 
+      subtitle={group ? `${group.memberCount} members • ${group.subject}` : "Connect with fellow students"}
+    >
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 h-[calc(100vh-60px)] flex gap-6">
         {/* Chat Area */}
         <div className="flex-1 flex flex-col rounded-xl border border-border overflow-hidden bg-card">
@@ -213,6 +214,6 @@ export default function GroupChatPage({ params }: { params: Promise<{ id: string
           </div>
         </div>
       </div>
-    </main>
+    </Layout>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Calendar, CheckCircle, Circle, X, Loader2, Sparkles, Trash2, ChevronDown, ChevronUp, Plus, BookOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -14,6 +14,8 @@ import {
 } from "@/lib/firestore"
 import { generatePersonalizedContent } from "@/lib/ai-client"
 import { usePersistentTasks } from "@/lib/hooks/usePersistentTasks"
+import { createStudyPlan as createStudyPlanAI, APIError } from "@/lib/api"
+import { toast } from "sonner"
 
 export default function PlannerPage() {
   const router = useRouter()
@@ -157,13 +159,13 @@ export default function PlannerPage() {
 
   const generateStudyPlan = async () => {
     if (!user || !planConfig.subject || !planConfig.examDate) return
-    
+
     setGenerating(true)
     try {
       const today = new Date()
       const examDate = new Date(planConfig.examDate)
       const daysUntilExam = Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-      
+
       if (daysUntilExam <= 0) {
         alert("Please select a future exam date")
         setGenerating(false)
@@ -181,80 +183,280 @@ export default function PlannerPage() {
         totalTasks: 0
       })
 
-      // Generate study plan based on difficulty
-      const totalDays = Math.min(daysUntilExam, 30) // Max 30 days plan
-      const hoursMultiplier = planConfig.difficulty === "easy" ? 0.8 : planConfig.difficulty === "hard" ? 1.3 : 1
-      
-      // Study plan templates based on difficulty
-      const studyPhases = {
-        easy: [
-          { phase: "Foundation Review", days: 0.3, description: "Review basic concepts and fundamentals" },
-          { phase: "Core Content", days: 0.4, description: "Study main topics and key theories" },
-          { phase: "Practice", days: 0.2, description: "Practice problems and examples" },
-          { phase: "Final Review", days: 0.1, description: "Quick review and rest" }
-        ],
-        medium: [
-          { phase: "Foundation Review", days: 0.2, description: "Review prerequisites and basics" },
-          { phase: "Deep Learning", days: 0.35, description: "In-depth study of core concepts" },
-          { phase: "Application", days: 0.25, description: "Apply concepts to problems" },
-          { phase: "Mock Tests", days: 0.1, description: "Take practice exams" },
-          { phase: "Final Review", days: 0.1, description: "Review weak areas" }
-        ],
-        hard: [
-          { phase: "Intensive Foundation", days: 0.15, description: "Rapid review of all prerequisites" },
-          { phase: "Advanced Concepts", days: 0.3, description: "Master complex topics" },
-          { phase: "Problem Solving", days: 0.25, description: "Solve challenging problems" },
-          { phase: "Timed Practice", days: 0.15, description: "Practice under exam conditions" },
-          { phase: "Mock Exams", days: 0.1, description: "Full practice exams" },
-          { phase: "Final Push", days: 0.05, description: "Last minute review" }
-        ]
-      }
+      // Try AI backend first for intelligent plan generation
+      try {
+        const result = await createStudyPlanAI({
+          subject: planConfig.subject,
+          days: Math.min(daysUntilExam, 30),
+          current_knowledge: planConfig.difficulty === "easy" ? "beginner" : planConfig.difficulty === "hard" ? "advanced" : "intermediate",
+          retrieve_materials: true
+        })
 
-      const phases = studyPhases[planConfig.difficulty]
-      let currentDay = 1
-      let totalTasks = 0
+        // Parse AI plan and create tasks
+        const lines = result.plan.split('\n').filter(l => l.trim())
+        let totalTasks = 0
+        let currentDay = 1
 
-      for (const phase of phases) {
-        const phaseDays = Math.max(1, Math.round(totalDays * phase.days))
-        for (let i = 0; i < phaseDays && currentDay <= totalDays; i++) {
-          const taskDate = new Date(today)
-          taskDate.setDate(taskDate.getDate() + currentDay - 1)
-          
-          await createStudyTask({
-            title: `${planConfig.subject}: ${phase.phase}`,
-            day: currentDay,
-            hours: Math.round(planConfig.hoursPerDay * hoursMultiplier * 10) / 10,
-            dueDate: taskDate,
-            userId: user.uid,
-            planId: planId,
-            priority: "medium",
-            status: "pending"
-          })
-          currentDay++
-          totalTasks++
+        for (const line of lines.slice(0, Math.min(daysUntilExam, 30))) {
+          if (line.trim() && !line.startsWith('#') && line.length > 10) {
+            const taskDate = new Date(today)
+            taskDate.setDate(taskDate.getDate() + currentDay - 1)
+
+            await createStudyTask({
+              title: line.substring(0, 100).trim(),
+              day: currentDay,
+              hours: planConfig.hoursPerDay,
+              dueDate: taskDate,
+              userId: user.uid,
+              planId: planId,
+              priority: "medium",
+              status: "pending"
+            })
+
+            currentDay++
+            totalTasks++
+
+            if (currentDay > daysUntilExam) break
+          }
         }
+
+        // Update plan with total tasks count
+        await updatePlanTotalTasks(planId, totalTasks)
+        await updatePlanProgress(planId, 0)
+
+        toast.success(`AI generated study plan with ${result.materials_used} materials`, {
+          description: `Created a ${result.days}-day plan for ${result.subject}`,
+          duration: 4000
+        })
+
+      } catch (aiError) {
+        console.warn("AI backend failed, using template fallback:", aiError)
+
+        // Fallback to template-based generation
+        const totalDays = Math.min(daysUntilExam, 30)
+        const hoursMultiplier = planConfig.difficulty === "easy" ? 0.8 : planConfig.difficulty === "hard" ? 1.3 : 1
+
+        // Study plan templates based on difficulty
+        const studyPhases = {
+          easy: [
+            { phase: "Foundation Review", days: 0.3, description: "Review basic concepts and fundamentals" },
+            { phase: "Core Content", days: 0.4, description: "Study main topics and key theories" },
+            { phase: "Practice", days: 0.2, description: "Practice problems and examples" },
+            { phase: "Final Review", days: 0.1, description: "Quick review and rest" }
+          ],
+          medium: [
+            { phase: "Foundation Review", days: 0.2, description: "Review prerequisites and basics" },
+            { phase: "Deep Learning", days: 0.35, description: "In-depth study of core concepts" },
+            { phase: "Application", days: 0.25, description: "Apply concepts to problems" },
+            { phase: "Mock Tests", days: 0.1, description: "Take practice exams" },
+            { phase: "Final Review", days: 0.1, description: "Review weak areas" }
+          ],
+          hard: [
+            { phase: "Intensive Foundation", days: 0.15, description: "Rapid review of all prerequisites" },
+            { phase: "Advanced Concepts", days: 0.3, description: "Master complex topics" },
+            { phase: "Problem Solving", days: 0.25, description: "Solve challenging problems" },
+            { phase: "Timed Practice", days: 0.15, description: "Practice under exam conditions" },
+            { phase: "Mock Exams", days: 0.1, description: "Full practice exams" },
+            { phase: "Final Push", days: 0.05, description: "Last minute review" }
+          ]
+        }
+
+        const phases = studyPhases[planConfig.difficulty]
+        let currentDay = 1
+        let totalTasks = 0
+
+        for (const phase of phases) {
+          const phaseDays = Math.max(1, Math.round(totalDays * phase.days))
+          for (let i = 0; i < phaseDays && currentDay <= totalDays; i++) {
+            const taskDate = new Date(today)
+            taskDate.setDate(taskDate.getDate() + currentDay - 1)
+
+            await createStudyTask({
+              title: `${planConfig.subject}: ${phase.phase}`,
+              day: currentDay,
+              hours: Math.round(planConfig.hoursPerDay * hoursMultiplier * 10) / 10,
+              dueDate: taskDate,
+              userId: user.uid,
+              planId: planId,
+              priority: "medium",
+              status: "pending"
+            })
+            currentDay++
+            totalTasks++
+          }
+        }
+
+        // Update plan with total tasks count
+        await updatePlanTotalTasks(planId, totalTasks)
+        await updatePlanProgress(planId, 0)
       }
 
-      // Update plan with total tasks count
-      await updatePlanTotalTasks(planId, totalTasks)
-      await updatePlanProgress(planId, 0)
-
-      // Reload plans and tasks
+      // Common code that runs after both AI and fallback
       const userPlans = await getStudyPlans(user.uid)
       setPlans(userPlans)
-
       await loadStudyTasks(planId)
-
       setExpandedPlan(planId)
       setShowGenerator(false)
       setPlanConfig({ subject: "", examDate: "", difficulty: "medium", hoursPerDay: 2 })
-    } catch (error: any) {
+
+    } catch (error) {
       console.error("Error generating plan:", error)
-      alert("Failed to generate study plan: " + (error?.message || "Unknown error"))
+      alert("Failed to generate study plan: " + (error instanceof Error ? error.message : "Unknown error"))
     } finally {
       setGenerating(false)
     }
   }
+  //   if (!user || !planConfig.subject || !planConfig.examDate) return
+    
+  //   setGenerating(true)
+  //   try {
+  //     const today = new Date()
+  //     const examDate = new Date(planConfig.examDate)
+  //     const daysUntilExam = Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      
+  //     if (daysUntilExam <= 0) {
+  //       alert("Please select a future exam date")
+  //       setGenerating(false)
+  //       return
+  //     }
+
+  //     // Create the study plan first
+  //     const planId = await createStudyPlan({
+  //       name: planConfig.subject,
+  //       subject: planConfig.subject,
+  //       examDate: examDate,
+  //       difficulty: planConfig.difficulty,
+  //       hoursPerDay: planConfig.hoursPerDay,
+  //       userId: user.uid,
+  //       totalTasks: 0
+  //     })
+
+  //     // Try AI backend first for intelligent plan generation
+  //     let aiGeneratedPlan: string | null = null
+  //     try {
+  //       const result = await createStudyPlanAI({
+  //         subject: planConfig.subject,
+  //         days: Math.min(daysUntilExam, 30),
+  //         current_knowledge: planConfig.difficulty === "easy" ? "beginner" : planConfig.difficulty === "hard" ? "advanced" : "intermediate",
+  //         retrieve_materials: true
+  //       })
+
+  //       aiGeneratedPlan = result.plan
+        
+  //       toast.success(`AI generated study plan with ${result.materials_used} materials`, {
+  //         description: `Created a ${result.days}-day plan for ${result.subject}`,
+  //         duration: 4000
+  //       })
+
+  //       // Parse AI plan and create tasks (simplified - parse the text plan)
+  //       const lines = result.plan.split('\n').filter(l => l.trim())
+  //       let totalTasks = 0
+  //       let currentDay = 1
+
+  //       for (const line of lines.slice(0, Math.min(daysUntilExam, 30))) {
+  //         if (line.trim() && !line.startsWith('#') && line.length > 10) {
+  //           const taskDate = new Date(today)
+  //           taskDate.setDate(taskDate.getDate() + currentDay - 1)
+            
+  //           await createStudyTask({
+  //             title: line.substring(0, 100).trim(),
+  //             day: currentDay,
+  //             hours: planConfig.hoursPerDay,
+  //             dueDate: taskDate,
+  //             userId: user.uid,
+  //             planId: planId,
+  //             priority: "medium",
+  //             status: "pending"
+  //           })
+            
+  //           currentDay++
+  //           totalTasks++
+            
+  //           if (currentDay > daysUntilExam) break
+  //         }
+  //       }
+
+  //       // Update plan with total tasks count
+  //       await updatePlanTotalTasks(planId, totalTasks)
+  //       await updatePlanProgress(planId, 0)
+
+  //     } catch (error) {
+  //       console.warn("AI backend failed, using template fallback:", error)
+        
+  //       // Fallback to template-based generation
+  //       const totalDays = Math.min(daysUntilExam, 30)
+  //       const hoursMultiplier = planConfig.difficulty === "easy" ? 0.8 : planConfig.difficulty === "hard" ? 1.3 : 1
+      
+  //     // Study plan templates based on difficulty
+  //     const studyPhases = {
+  //       easy: [
+  //         { phase: "Foundation Review", days: 0.3, description: "Review basic concepts and fundamentals" },
+  //         { phase: "Core Content", days: 0.4, description: "Study main topics and key theories" },
+  //         { phase: "Practice", days: 0.2, description: "Practice problems and examples" },
+  //         { phase: "Final Review", days: 0.1, description: "Quick review and rest" }
+  //       ],
+  //       medium: [
+  //         { phase: "Foundation Review", days: 0.2, description: "Review prerequisites and basics" },
+  //         { phase: "Deep Learning", days: 0.35, description: "In-depth study of core concepts" },
+  //         { phase: "Application", days: 0.25, description: "Apply concepts to problems" },
+  //         { phase: "Mock Tests", days: 0.1, description: "Take practice exams" },
+  //         { phase: "Final Review", days: 0.1, description: "Review weak areas" }
+  //       ],
+  //       hard: [
+  //         { phase: "Intensive Foundation", days: 0.15, description: "Rapid review of all prerequisites" },
+  //         { phase: "Advanced Concepts", days: 0.3, description: "Master complex topics" },
+  //         { phase: "Problem Solving", days: 0.25, description: "Solve challenging problems" },
+  //         { phase: "Timed Practice", days: 0.15, description: "Practice under exam conditions" },
+  //         { phase: "Mock Exams", days: 0.1, description: "Full practice exams" },
+  //         { phase: "Final Push", days: 0.05, description: "Last minute review" }
+  //       ]
+  //     }
+
+  //     const phases = studyPhases[planConfig.difficulty]
+  //     let currentDay = 1
+  //     let totalTasks = 0
+
+  //     for (const phase of phases) {
+  //       const phaseDays = Math.max(1, Math.round(totalDays * phase.days))
+  //       for (let i = 0; i < phaseDays && currentDay <= totalDays; i++) {
+  //         const taskDate = new Date(today)
+  //         taskDate.setDate(taskDate.getDate() + currentDay - 1)
+          
+  //         await createStudyTask({
+  //           title: `${planConfig.subject}: ${phase.phase}`,
+  //           day: currentDay,
+  //           hours: Math.round(planConfig.hoursPerDay * hoursMultiplier * 10) / 10,
+  //           dueDate: taskDate,
+  //           userId: user.uid,
+  //           planId: planId,
+  //           priority: "medium",
+  //           status: "pending"
+  //         })
+  //         currentDay++
+  //         totalTasks++
+  //       }
+  //     }
+
+  //     // Update plan with total tasks count
+  //     await updatePlanTotalTasks(planId, totalTasks)
+  //     await updatePlanProgress(planId, 0)
+
+  //     // Reload plans and tasks
+  //     const userPlans = await getStudyPlans(user.uid)
+  //     setPlans(userPlans)
+
+  //     await loadStudyTasks(planId)
+
+  //     setExpandedPlan(planId)
+  //     setShowGenerator(false)
+  //     setPlanConfig({ subject: "", examDate: "", difficulty: "medium", hoursPerDay: 2 })
+  //   } catch (error) {
+  //     console.error("Error generating plan:", error)
+  //     alert("Failed to generate study plan: " + (error?.message || "Unknown error"))
+  //   } finally {
+  //     setGenerating(false)
+  //   }
+  // }
 
   // Calculate overall stats
   const totalTasks = plans.reduce((sum, p) => sum + (p.totalTasks || 0), 0)
@@ -272,20 +474,18 @@ export default function PlannerPage() {
   if (!user) return null
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100">
-      <Navigation />
-
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-12">
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <h1 className="text-4xl font-serif font-bold text-slate-100 mb-2">Study Planner</h1>
-            <p className="text-slate-400 mb-4">Create and manage study plans for your courses and exams</p>
-            <p className="text-slate-400">Manage multiple study plans for your exams</p>
-          </div>
-          <Button onClick={() => setShowGenerator(true)} className="bg-gradient-to-r from-primary to-purple-600">
-            <Plus className="w-4 h-4 mr-2" /> New Plan
-          </Button>
+    <Layout 
+      title="Study Planner" 
+      subtitle="Create and manage study plans for your courses and exams"
+    >
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <p className="text-slate-400">Manage multiple study plans for your exams</p>
         </div>
+        <Button onClick={() => setShowGenerator(true)} className="bg-gradient-to-r from-primary to-purple-600">
+          <Plus className="w-4 h-4 mr-2" /> New Plan
+        </Button>
+      </div>
 
         {/* Overall Stats */}
         {plans.length > 0 && (
@@ -454,7 +654,6 @@ export default function PlannerPage() {
             })}
           </div>
         )}
-      </div>
 
       {/* Generate Plan Modal */}
       {showGenerator && (
@@ -530,6 +729,6 @@ export default function PlannerPage() {
           </div>
         </div>
       )}
-    </main>
+    </Layout>
   )
 }

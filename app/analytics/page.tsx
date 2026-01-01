@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, TrendingUp, Clock, Target, BookOpen, BarChart3, PieChart, Activity, Loader2, Brain, Eye } from "lucide-react"
@@ -240,32 +240,25 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
+      <Layout>
         <div className="flex items-center justify-center min-h-[50vh]">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      </div>
+      </Layout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
+    <Layout 
+      title="Deep Analytics" 
+      subtitle="AI-powered insights into your study patterns"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <p className="text-muted-foreground">Predictive analytics, progress tracking, and personalized recommendations</p>
+        </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-1 flex items-center gap-2">
-              <Brain className="w-8 h-8 text-primary" />
-              Deep Analytics
-            </h1>
-            <p className="text-muted-foreground mb-2">AI-powered insights into your study patterns</p>
-            <p className="text-muted-foreground">Predictive analytics, progress tracking, and personalized recommendations</p>
-          </div>
-
-          <div className="flex gap-2">
+        <div className="flex gap-2">
             {["week", "month", "year"].map((range) => (
               <Button
                 key={range}
@@ -415,7 +408,6 @@ export default function AnalyticsPage() {
 
           </TabsContent>
         </Tabs>
-      </div>
-    </div>
+    </Layout>
   )
 }

@@ -1,0 +1,11 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+requests==2.31.0
+sentence-transformers==2.3.1
+openai-whisper==20231117
+pydantic==2.5.3
+qdrant-client==1.7.3
+python-multipart==0.0.6
+torch==2.1.2
+numpy==1.24.3
+aiofiles==23.2.1

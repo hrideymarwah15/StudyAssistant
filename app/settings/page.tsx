@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -81,29 +81,20 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
+      <Layout>
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      </div>
+      </Layout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Settings className="w-8 h-8 text-primary" />
-          <div>
-            <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Customize your study experience</p>
-          </div>
-        </div>
-
-        <Tabs defaultValue="study-targets" className="space-y-6">
+    <Layout 
+      title="Settings" 
+      subtitle="Customize your study experience"
+    >
+      <Tabs defaultValue="study-targets" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="study-targets" className="flex items-center gap-2">
               <Target className="w-4 h-4" />
@@ -346,7 +337,6 @@ export default function SettingsPage() {
             )}
           </Button>
         </div>
-      </div>
-    </div>
+    </Layout>
   )
 }

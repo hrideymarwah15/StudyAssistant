@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Plus, Check, X, Target, TrendingUp, Calendar, Flame, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
@@ -156,32 +156,28 @@ export default function HabitsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
-        <Navigation />
+      <Layout>
         <div className="flex items-center justify-center min-h-[50vh]">
           <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
         </div>
-      </div>
+      </Layout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
-      <Navigation />
+    <Layout 
+      title="Habits" 
+      subtitle="Build and maintain consistent study routines"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <p className="text-slate-400">Build consistent study routines and track your progress</p>
+        </div>
 
-      <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-100 mb-1">Habits</h1>
-            <p className="text-slate-400 mb-2">Build and maintain consistent study routines</p>
-            <p className="text-slate-400">Build consistent study routines and track your progress</p>
-          </div>
-
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
+        <Button
+          onClick={() => setShowCreateModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+        >
             <Plus className="w-4 h-4 mr-2" />
             New Habit
           </Button>
@@ -299,7 +295,6 @@ export default function HabitsPage() {
             ))
           )}
         </div>
-      </div>
 
       {/* Create Habit Modal */}
       {showCreateModal && (
@@ -384,6 +379,6 @@ export default function HabitsPage() {
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   )
 }

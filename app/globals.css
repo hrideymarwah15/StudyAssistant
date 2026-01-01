@@ -235,10 +235,84 @@ html {
   }
 }
 
+@keyframes slide-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .animate-float {
   animation: float 3s ease-in-out infinite;
 }
 
 .animate-pulse-slow {
   animation: pulse-slow 2s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, [role="button"] {
+  @apply transition-all duration-200 ease-out;
+}
+
+/* Mobile-first responsive utilities */
+@media (max-width: 640px) {
+  .container {
+    @apply px-4;
+  }
+}
+
+/* Improve touch targets on mobile */
+@media (max-width: 768px) {
+  button, a, [role="button"] {
+    @apply min-h-[44px] min-w-[44px];
+  }
+}
+
+/* Focus visible improvements */
+*:focus-visible {
+  @apply ring-2 ring-ring ring-offset-2 ring-offset-background outline-none;
+}
+
+/* Smooth card hover effects */
+.card-hover {
+  @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-lg;
 }

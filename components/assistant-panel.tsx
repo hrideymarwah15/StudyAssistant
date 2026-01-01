@@ -14,6 +14,8 @@ import {
   getMaterials,
   getFlashcardDecks
 } from "@/lib/firestore"
+import { askAI, APIError } from "@/lib/api"
+import { toast } from "sonner"
 
 interface ChatMessage {
   id: string
@@ -127,12 +129,38 @@ export function AssistantPanel() {
     setMessages(prev => [...prev, userMessage])
 
     try {
-      // Parse and execute command
-      const command = parseCommand(messageText)
-      const result = await executeCommand(command, userContext)
+      // First try to use the AI backend for intelligent responses
+      let result: CommandResult
+      let usedBackend = false
+
+      try {
+        const aiResponse = await askAI({
+          question: messageText,
+          use_memory: true,
+          top_k: 5
+        })
+        
+        result = {
+          success: true,
+          message: aiResponse.answer,
+          action: aiResponse.sources_count > 0 ? {
+            type: "speak",
+            data: { sources: aiResponse.sources }
+          } : undefined
+        }
+        usedBackend = true
+      } catch (error) {
+        // Fallback to local command parsing if backend fails
+        console.warn("AI backend unavailable, using local commands:", error)
+        const command = parseCommand(messageText)
+        result = await executeCommand(command, userContext)
+      }
 
       // Add assistant response
-      const assistantMessage = addAssistantMessage(result.message, result.action)
+      const assistantMessage = addAssistantMessage(
+        usedBackend ? result.message : result.message, 
+        result.action
+      )
 
       // Handle actions
       if (result.action) {

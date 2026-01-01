@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Upload, Search, Filter, BookOpen, FileText, ImageIcon, Loader2, Trash2, FolderPlus, Folder, FolderOpen, ArrowLeft, MoreVertical, X } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
@@ -207,17 +207,15 @@ export default function MaterialsPage() {
   if (!user) return null
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100">
-      <Navigation />
-
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-12">
-        <div className="mb-12">
-          <h1 className="text-4xl font-serif font-bold text-slate-100 mb-2">Study Materials</h1>
-          <p className="text-slate-400 mb-4">Upload, organize, and access all your study files and notes</p>
-          <p className="text-slate-400">
-            Welcome, {user.displayName || user.email}! Organize and access all your study materials in one place.
-          </p>
-        </div>
+    <Layout 
+      title="Study Materials" 
+      subtitle="Upload, organize, and access all your study files and notes"
+    >
+      <div className="mb-12">
+        <p className="text-slate-400">
+          Welcome, {user.displayName || user.email}! Organize and access all your study materials in one place.
+        </p>
+      </div>
 
         {/* Current Folder Path */}
         {currentFolder && (
@@ -433,7 +431,6 @@ export default function MaterialsPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Create Folder Modal */}
       {showCreateFolder && (
@@ -515,6 +512,6 @@ export default function MaterialsPage() {
           </div>
         </div>
       )}
-    </main>
+    </Layout>
   )
 }

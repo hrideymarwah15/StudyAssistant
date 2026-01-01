@@ -9,6 +9,7 @@ import {
 } from "@/lib/firestore"
 import { useAuthContext } from "./auth-provider"
 import { analyzeLearningPatterns, generatePersonalizedContent } from "@/lib/ai-client"
+import { AmbientPlayer } from "@/components/ambient-player"
 
 interface PomodoroTimerProps {
   task?: Task | null
@@ -631,6 +632,11 @@ export function PomodoroTimer({ task, onClose, compact = false, onSessionComplet
           </div>
         </div>
       )}
+
+      {/* Ambient Sounds */}
+      <div className="mt-6">
+        <AmbientPlayer isActive={isRunning && mode === "work"} />
+      </div>
 
       {/* Settings panel */}
       {showSettings && (

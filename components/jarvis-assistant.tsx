@@ -185,15 +185,61 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     }
   }, [isOpen])
 
+  // Generate proactive contextual greeting
+  const getContextualGreeting = () => {
+    const hour = new Date().getHours()
+    const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"
+    
+    let greeting = `Good ${timeOfDay}! I'm JARVIS, your intelligent study assistant.`
+    let suggestion = ""
+    
+    // Proactive suggestions based on context
+    if (context?.todayTasks && context.todayTasks.length > 0) {
+      const urgentTasks = context.todayTasks.filter(t => t.priority === 'urgent')
+      const highTasks = context.todayTasks.filter(t => t.priority === 'high')
+      
+      if (urgentTasks.length > 0) {
+        suggestion = `⚡ You have ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} - shall I help you prioritize?`
+      } else if (highTasks.length > 0) {
+        suggestion = `📋 ${context.todayTasks.length} tasks today. Ready to start a focus session?`
+      } else {
+        suggestion = `You have ${context.todayTasks.length} task${context.todayTasks.length > 1 ? 's' : ''} scheduled. How can I help?`
+      }
+    } else if (context?.habits && context.habits.length > 0) {
+      const incompleteHabits = context.habits.filter(h => {
+        const todayStr = new Date().toISOString().split('T')[0]
+        return !h.completions.some(c => c.date === todayStr && c.completed)
+      })
+      if (incompleteHabits.length > 0) {
+        suggestion = `🔥 ${incompleteHabits.length} habit${incompleteHabits.length > 1 ? 's' : ''} pending today. Want help staying on track?`
+      }
+    }
+    
+    // Time-based suggestions
+    if (!suggestion) {
+      if (hour >= 9 && hour <= 11) {
+        suggestion = "🧠 Morning peak focus time! Shall I help you plan a deep work session?"
+      } else if (hour >= 14 && hour <= 16) {
+        suggestion = "💪 Afternoon productivity window. Ready to tackle something challenging?"
+      } else if (hour >= 20 && hour <= 22) {
+        suggestion = "🌙 Good time for review. Want me to suggest flashcards to review?"
+      } else {
+        suggestion = "How may I assist you today?"
+      }
+    }
+    
+    return `${greeting}\n\n${suggestion}`
+  }
+
   useEffect(() => {
     if (isOpen && !isInitialized) {
       setIsInitialized(true)
-      // Jarvis greeting
+      // Jarvis greeting with contextual awareness
       setTimeout(() => {
-        addAssistantMessage("Good " + getTimeOfDay() + ", I'm JARVIS, your intelligent study assistant. How may I help you today?")
+        addAssistantMessage(getContextualGreeting())
       }, 500)
     }
-  }, [isOpen, isInitialized])
+  }, [isOpen, isInitialized, context])
 
   useEffect(() => {
     if (isOpen) {

@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, FileText, BookOpen, Brain, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
-import { processMaterial } from "@/lib/api-client"
+import { Upload, FileText, BookOpen, Brain, CheckCircle, AlertCircle, Loader2, Mic } from "lucide-react"
+import { addMaterial, uploadAudio, APIError } from "@/lib/api"
+import { toast } from "sonner"
 
 interface MaterialFile {
   id: string
@@ -21,15 +22,20 @@ interface MaterialFile {
   flashcards?: any[]
   keyPoints?: string[]
   error?: string
+  transcript?: string
+  chunksStored?: number
 }
 
 interface MaterialProcessorProps {
   onMaterialProcessed?: (material: MaterialFile) => void
+  subject?: string
+  topic?: string
 }
 
-export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProps) {
+export function MaterialProcessor({ onMaterialProcessed, subject, topic }: MaterialProcessorProps) {
   const [files, setFiles] = useState<MaterialFile[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  const [processingType, setProcessingType] = useState<'text' | 'audio'>('text')
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const newFiles: MaterialFile[] = acceptedFiles.map(file => ({
@@ -51,51 +57,105 @@ export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProp
 
   const processFile = async (file: MaterialFile, actualFile: File) => {
     try {
-      // Update status to processing
-      setFiles(prev => prev.map(f =>
-        f.id === file.id ? { ...f, status: 'processing', progress: 25 } : f
-      ))
+      // Determine if it's an audio file
+      const isAudio = actualFile.type.startsWith('audio/') || 
+                      actualFile.name.match(/\.(mp3|wav|m4a|ogg|flac)$/i)
 
-      // Convert file to text (simplified - in real app would handle PDFs, etc.)
-      const text = await actualFile.text()
+      if (isAudio) {
+        // Process audio file
+        setProcessingType('audio')
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: 'processing', progress: 25 } : f
+        ))
 
-      // Update progress
-      setFiles(prev => prev.map(f =>
-        f.id === file.id ? { ...f, progress: 50 } : f
-      ))
+        toast.loading("Transcribing audio...", { id: file.id })
 
-      // Process with AI
-      const result = await processMaterial(text, {
-        generateSummary: true,
-        generateFlashcards: true,
-        extractKeyPoints: true
-      })
+        const result = await uploadAudio(actualFile, {
+          course: subject || "General",
+          topic: topic || file.name,
+          store_in_memory: true
+        })
 
-      // Update with results
-      const processedFile: MaterialFile = {
-        ...file,
-        status: 'completed',
-        progress: 100,
-        summary: result.summary,
-        flashcards: result.flashcards,
-        keyPoints: result.keyPoints
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, progress: 75 } : f
+        ))
+
+        const processedFile: MaterialFile = {
+          ...file,
+          status: 'completed',
+          progress: 100,
+          transcript: result.transcript,
+          chunksStored: result.stored_chunks,
+          summary: `Transcribed ${result.language} audio with ${result.stored_chunks} chunks stored in memory.`
+        }
+
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? processedFile : f
+        ))
+
+        toast.success(`Audio transcribed! ${result.stored_chunks} chunks stored.`, { id: file.id })
+        onMaterialProcessed?.(processedFile)
+
+      } else {
+        // Process text file
+        setProcessingType('text')
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: 'processing', progress: 25 } : f
+        ))
+
+        toast.loading("Processing text...", { id: file.id })
+
+        // Read file content
+        const text = await actualFile.text()
+
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, progress: 50 } : f
+        ))
+
+        // Store in AI memory
+        const result = await addMaterial({
+          text: text,
+          course: subject || "General",
+          topic: topic || file.name,
+          source: file.name
+        })
+
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? { ...f, progress: 75 } : f
+        ))
+
+        const processedFile: MaterialFile = {
+          ...file,
+          status: 'completed',
+          progress: 100,
+          summary: `Stored in AI memory with ID: ${result.point_id.substring(0, 8)}...`
+        }
+
+        setFiles(prev => prev.map(f =>
+          f.id === file.id ? processedFile : f
+        ))
+
+        toast.success("Material stored in AI memory!", { id: file.id })
+        onMaterialProcessed?.(processedFile)
       }
 
-      setFiles(prev => prev.map(f =>
-        f.id === file.id ? processedFile : f
-      ))
-
-      onMaterialProcessed?.(processedFile)
-
     } catch (error) {
+      const errorMessage = error instanceof APIError 
+        ? error.message 
+        : error instanceof Error 
+        ? error.message 
+        : 'Processing failed'
+
       setFiles(prev => prev.map(f =>
         f.id === file.id ? {
           ...f,
           status: 'error',
           progress: 0,
-          error: error instanceof Error ? error.message : 'Processing failed'
+          error: errorMessage
         } : f
       ))
+
+      toast.error(errorMessage, { id: file.id })
     }
   }
 
@@ -105,7 +165,8 @@ export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProp
       'text/plain': ['.txt'],
       'application/pdf': ['.pdf'],
       'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'audio/*': ['.mp3', '.wav', '.m4a', '.ogg', '.flac']
     },
     multiple: true
   })
@@ -162,8 +223,12 @@ export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProp
                 <p className="text-lg font-medium mb-2">
                   Drag & drop study materials here, or click to select
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Supports PDF, DOC, DOCX, and TXT files
+                <p className="text-sm text-muted-foreground mb-2">
+                  <strong>Text:</strong> PDF, DOC, DOCX, TXT
+                </p>
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+                  <Mic className="w-4 h-4" />
+                  <strong>Audio:</strong> MP3, WAV, M4A, OGG, FLAC (auto-transcribed)
                 </p>
               </div>
             )}
@@ -205,37 +270,51 @@ export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProp
                   )}
 
                   {file.status === 'completed' && (
-                    <Tabs defaultValue="summary" className="mt-4">
-                      <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="summary">Summary</TabsTrigger>
-                        <TabsTrigger value="keypoints">Key Points</TabsTrigger>
-                        <TabsTrigger value="flashcards">Flashcards</TabsTrigger>
-                      </TabsList>
-
-                      <TabsContent value="summary" className="mt-4">
+                    <div className="mt-4 space-y-3">
+                      {file.summary && (
                         <div className="p-4 bg-muted rounded-lg">
                           <h4 className="font-medium mb-2 flex items-center gap-2">
-                            <BookOpen className="w-4 h-4" />
-                            AI-Generated Summary
+                            <CheckCircle className="w-4 h-4 text-green-500" />
+                            Result
                           </h4>
                           <p className="text-sm">{file.summary}</p>
                         </div>
-                      </TabsContent>
+                      )}
 
-                      <TabsContent value="keypoints" className="mt-4">
+                      {file.transcript && (
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <h4 className="font-medium mb-2 flex items-center gap-2">
+                            <Mic className="w-4 h-4 text-blue-500" />
+                            Transcript {file.chunksStored && `(${file.chunksStored} chunks stored)`}
+                          </h4>
+                          <p className="text-sm max-h-40 overflow-y-auto whitespace-pre-wrap">
+                            {file.transcript}
+                          </p>
+                        </div>
+                      )}
+
+                      {file.keyPoints && file.keyPoints.length > 0 && (
                         <div className="space-y-2">
-                          {file.keyPoints?.map((point, index) => (
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <Brain className="w-4 h-4" />
+                            Key Points
+                          </h4>
+                          {file.keyPoints.map((point, index) => (
                             <div key={index} className="flex items-start gap-2 p-3 bg-muted rounded-lg">
                               <span className="text-primary font-medium">{index + 1}.</span>
                               <span className="text-sm">{point}</span>
                             </div>
                           ))}
                         </div>
-                      </TabsContent>
+                      )}
 
-                      <TabsContent value="flashcards" className="mt-4">
-                        <div className="grid gap-3">
-                          {file.flashcards?.map((card, index) => (
+                      {file.flashcards && file.flashcards.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-sm flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            Flashcards
+                          </h4>
+                          {file.flashcards.map((card, index) => (
                             <Card key={index} className="p-4">
                               <div className="space-y-2">
                                 <p className="font-medium">{card.question}</p>
@@ -244,8 +323,8 @@ export function MaterialProcessor({ onMaterialProcessed }: MaterialProcessorProp
                             </Card>
                           ))}
                         </div>
-                      </TabsContent>
-                    </Tabs>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

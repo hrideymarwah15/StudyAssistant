@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuthContext } from "@/components/auth-provider"
+import Layout from "@/components/Layout"
 import { 
   ChevronLeft, ChevronRight, Plus, Clock, MapPin, Calendar as CalendarIcon,
   Video, Code2, BookOpen, FlaskConical, Users, Repeat, X, Check, Edit2, Brain, Coffee
@@ -546,21 +547,15 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-1">Calendar</h1>
-            <p className="text-muted-foreground">
-              {currentDate.toLocaleDateString("en-US", { 
-                month: "long", 
-                year: "numeric"
-              })}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
+    <Layout 
+      title="Calendar" 
+      subtitle={`${currentDate.toLocaleDateString("en-US", { 
+        month: "long", 
+        year: "numeric"
+      })}`}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-3">
             {/* View Toggle */}
             <div className="flex rounded-xl bg-muted p-1">
               <button
@@ -827,7 +822,6 @@ export default function CalendarPage() {
             )}
           </div>
         </div>
-      </div>
 
       {/* Event Modal */}
       {showEventModal && (
@@ -843,6 +837,6 @@ export default function CalendarPage() {
           onDelete={selectedEvent ? handleDeleteEvent : undefined}
         />
       )}
-    </div>
+    </Layout>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { MapPin, Phone, MessageCircle, AlertCircle, NavigationIcon } from "lucide-react"
 import { useState } from "react"
@@ -13,24 +13,22 @@ export default function SupportPage() {
   ])
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100">
-      <Navigation />
-
-      <div className="max-w-4xl mx-auto px-4 md:px-8 py-12">
-        {/* Alert Banner */}
-        <div className="mb-12 p-6 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex gap-4">
-          <AlertCircle className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <h2 className="font-semibold text-slate-100 mb-2">You're Not Alone</h2>
-            <p className="text-slate-400">If you're struggling, please reach out. Support is available 24/7.</p>
-          </div>
+    <Layout 
+      title="Mental Health & Support" 
+      subtitle="Access resources and get help when you need it"
+    >
+      {/* Alert Banner */}
+      <div className="mb-12 p-6 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex gap-4">
+        <AlertCircle className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <h2 className="font-semibold text-slate-100 mb-2">You're Not Alone</h2>
+          <p className="text-slate-400">If you're struggling, please reach out. Support is available 24/7.</p>
         </div>
+      </div>
 
-        <div className="mb-12">
-          <h1 className="text-4xl font-serif font-bold text-slate-100 mb-2">Mental Health & Support</h1>
-          <p className="text-slate-400 mb-4">Access resources and get help when you need it</p>
-          <p className="text-slate-400">Resources and help when you need it most</p>
-        </div>
+      <div className="mb-12">
+        <p className="text-slate-400">Resources and help when you need it most</p>
+      </div>
 
         {/* Hotlines */}
         <div className="mb-12">
@@ -88,7 +86,6 @@ export default function SupportPage() {
             <li>• You deserve to prioritize your mental health</li>
           </ul>
         </div>
-      </div>
-    </main>
+    </Layout>
   )
 }

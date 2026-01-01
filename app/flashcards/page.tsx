@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import Layout from "@/components/Layout"
 import { Button } from "@/components/ui/button"
 import { Plus, RotateCcw, Loader2, X, Trash2, Sparkles, Wand2, Upload, FileText } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
@@ -8,10 +8,11 @@ import { useRouter } from "next/navigation"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 import { getFlashcardDecks, createFlashcardDeck, getFlashcards, addFlashcard, getMaterials, type FlashcardDeck, type Flashcard, type Material } from "@/lib/firestore"
-import { generateFlashcards } from "@/lib/ai-client"
+import { generateFlashcards as generateFlashcardsOld } from "@/lib/ai-client"
 import { readFileContent } from "@/lib/gemini"
 import { generateSpacedRepetitionSchedule } from "@/lib/utils"
 import { toast } from "sonner"
+import { generateFlashcards as generateFlashcardsAI, APIError } from "@/lib/api"
 
 export default function FlashcardsPage() {
   const router = useRouter()
@@ -212,13 +213,39 @@ export default function FlashcardsPage() {
       console.log("Generating flashcards with content length:", content.length)
       console.log("Topic:", topic)
       
-      // Use unified AI client (Groq + Gemini fallback)
-      generatedCards = await generateFlashcards(
-        content,
-        topic,
-        aiConfig.count,
-        aiConfig.difficulty
-      )
+      // Try to use AI backend first
+      try {
+        const result = await generateFlashcardsAI({
+          text: content || undefined,
+          topic: !content ? topic : undefined,
+          num_cards: aiConfig.count,
+          use_memory: !content // Use memory if no content provided
+        })
+
+        generatedCards = result.flashcards.map(card => ({
+          front: card.question,
+          back: card.answer
+        }))
+
+        toast.info(`Generated ${generatedCards.length} flashcards using AI backend`, {
+          description: result.source,
+          duration: 3000
+        })
+      } catch (error) {
+        console.warn("AI backend failed, using fallback:", error)
+        
+        // Fallback to original AI client
+        generatedCards = await generateFlashcardsOld(
+          content,
+          topic,
+          aiConfig.count,
+          aiConfig.difficulty
+        )
+
+        toast.info("Generated flashcards using fallback AI", {
+          duration: 2000
+        })
+      }
       
       // Add all generated cards to the deck
       for (const card of generatedCards) {
@@ -449,15 +476,13 @@ export default function FlashcardsPage() {
   if (!user) return null
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100">
-      <Navigation />
-
-      <div className="max-w-4xl mx-auto px-4 md:px-8 py-12">
-        <div className="mb-12">
-          <h1 className="text-4xl font-serif font-bold text-slate-100 mb-2">Flashcards</h1>
-          <p className="text-slate-400 mb-4">Create and review flashcards to master key concepts</p>
-          <p className="text-slate-400">Study with flashcards</p>
-        </div>
+    <Layout 
+      title="Flashcards" 
+      subtitle="Create and review flashcards to master key concepts"
+    >
+      <div className="mb-12">
+        <p className="text-slate-400">Study with flashcards</p>
+      </div>
 
         {!selectedDeck ? (
           <>
@@ -558,7 +583,6 @@ export default function FlashcardsPage() {
             )}
           </>
         )}
-      </div>
 
       {/* Create Deck Modal */}
       {showCreateDeck && (
@@ -856,6 +880,6 @@ export default function FlashcardsPage() {
           </div>
         </div>
       )}
-    </main>
+    </Layout>
   )
 }

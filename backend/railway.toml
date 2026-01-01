@@ -1,0 +1,25 @@
+# Railway Deployment Configuration
+
+# This file tells Railway how to deploy your Python backend
+
+# Python version
+python-version: "3.11"
+
+# Install dependencies
+install:
+  - pip install -r requirements.txt
+
+# Start command
+start: python app.py
+
+# Environment variables (set these in Railway dashboard)
+# NEXT_PUBLIC_API_URL - will be set automatically
+# QDRANT_URL - your Qdrant instance URL
+# OLLAMA_BASE_URL - your Ollama instance URL
+# OPENAI_API_KEY - if using OpenAI instead of Ollama
+
+# Health check
+healthcheck:
+  path: /health
+  interval: 30s
+  timeout: 10s

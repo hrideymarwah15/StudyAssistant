@@ -1,6 +1,29 @@
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 [build]
   command = "npm run build"
   publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Environment variables for production
+[build.environment]
+  NEXT_PUBLIC_API_URL = "https://your-backend-url.onrender.com"
+  NEXT_PUBLIC_GEMINI_API_KEY = "your_gemini_api_key_here"
+
+# Redirect rules for SPA
+[[redirects]]
+  from = "/api/*"
+  to = "https://your-backend-url.onrender.com/api/:splat"
+  status = 200
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
