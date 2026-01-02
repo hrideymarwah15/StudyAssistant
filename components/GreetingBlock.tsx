@@ -3,14 +3,21 @@
 import { useState, useEffect } from "react"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "@/lib/firebase"
-import { Flame, Target, Zap } from "lucide-react"
+import { Flame } from "lucide-react"
 
 interface GreetingBlockProps {
   todayTarget?: string
   streakDays?: number
+  focusMinutes?: number
+  targetMinutes?: number
 }
 
-export default function GreetingBlock({ todayTarget, streakDays = 0 }: GreetingBlockProps) {
+export default function GreetingBlock({ 
+  todayTarget, 
+  streakDays = 0,
+  focusMinutes = 0,
+  targetMinutes = 120
+}: GreetingBlockProps) {
   const [user, setUser] = useState<User | null>(null)
   const [currentTime, setCurrentTime] = useState(new Date())
 
@@ -39,42 +46,47 @@ export default function GreetingBlock({ todayTarget, streakDays = 0 }: GreetingB
   const getSmartTarget = () => {
     const hour = currentTime.getHours()
     if (todayTarget) return todayTarget
-    if (hour < 12) return "2h deep work on your priority subject"
-    if (hour < 17) return "Complete pending tasks + review notes"
-    return "Light review + plan tomorrow"
+    if (hour < 12) return "2h deep work • DSA + Math"
+    if (hour < 17) return "Complete priority tasks • review notes"
+    return "Light review • plan tomorrow"
+  }
+
+  // Calculate days to next milestone
+  const getNextMilestone = () => {
+    const milestones = [7, 14, 30, 60, 100]
+    const next = milestones.find(m => m > streakDays)
+    return next ? next - streakDays : 0
   }
 
   return (
-    <div className="greeting-block mb-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-100 mb-1">
-            {getGreeting()}, {userName}!
+    <div className="greeting-block mb-4">
+      {/* Single line: Greeting + Streak */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">
+            {getGreeting()}, {userName.toUpperCase()}!
           </h1>
-          <p className="text-slate-400 text-sm">
-            {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
+          <span className="text-slate-500 text-sm hidden sm:inline">
+            {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+          </span>
         </div>
         
-        {/* Streak badge */}
+        {/* Compact streak indicator */}
         {streakDays > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20">
-            <Flame className="w-4 h-4 text-orange-500" />
-            <span className="text-orange-400 text-sm font-medium">
-              {streakDays}-day streak
-            </span>
+          <div className="flex items-center gap-1.5 text-orange-400 text-sm font-medium">
+            <Flame className="w-4 h-4" />
+            <span>{streakDays}-day streak</span>
+            {getNextMilestone() > 0 && getNextMilestone() <= 5 && (
+              <span className="text-slate-500 text-xs">• {getNextMilestone()}d to milestone</span>
+            )}
           </div>
         )}
       </div>
       
-      {/* Actionable target subheading */}
-      <div className="mt-3 flex items-center gap-2 text-slate-300">
-        <Target className="w-4 h-4 text-blue-400" />
-        <span className="text-sm">
-          <span className="text-slate-400">Today's target:</span>{" "}
-          <span className="font-medium">{getSmartTarget()}</span>
-        </span>
-      </div>
+      {/* Target line - concise */}
+      <p className="text-slate-400 text-sm mt-1">
+        Target: <span className="text-slate-300">{getSmartTarget()}</span>
+      </p>
     </div>
   )
 }

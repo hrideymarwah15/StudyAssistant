@@ -20,8 +20,19 @@ import {
   type Habit,
   type DailyStats
 } from "@/lib/firestore"
-import { askAI, generateFlashcards, createStudyPlan, isBackendAvailable, type AskResponse } from "@/lib/api"
-import { BookOpen, Target, Lightbulb, Navigation, Wifi, WifiOff } from "lucide-react"
+import { 
+  askAI, 
+  generateFlashcards, 
+  createStudyPlan, 
+  isBackendAvailable, 
+  intelligentAsk,
+  type AskResponse,
+  type IntelligentAskResponse,
+  type AIMode,
+  type UserStudyContext,
+  type ProactiveSuggestion
+} from "@/lib/api"
+import { BookOpen, Target, Lightbulb, Navigation, Wifi, WifiOff, Zap, AlertTriangle, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 
 interface ChatMessage {
@@ -30,6 +41,8 @@ interface ChatMessage {
   content: string
   timestamp: Date
   action?: CommandResult["action"]
+  mode?: AIMode // Track which AI mode generated this
+  isIntervention?: boolean // Whether this was an intervention
 }
 
 interface JarvisAssistantProps {
@@ -39,6 +52,7 @@ interface JarvisAssistantProps {
     courses?: Course[]
     habits?: Habit[]
     dailyStats?: DailyStats
+    flashcardsDue?: number
   }
 }
 
@@ -66,6 +80,8 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
   const [speakOnlyIntro, setSpeakOnlyIntro] = useState(false)
   const [globalVoiceActive, setGlobalVoiceActive] = useState(false)
   const [backendOnline, setBackendOnline] = useState(false)
+  const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([])
+  const [pendingIntervention, setPendingIntervention] = useState<{message: string; originalRequest: string} | null>(null)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -200,55 +216,51 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     }
   }, [isOpen])
 
-  // Generate proactive contextual greeting
+  // Generate disciplined contextual greeting (Study Intelligence System)
   const getContextualGreeting = () => {
+    const studyContext = buildStudyContext()
     const hour = new Date().getHours()
-    const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"
     
-    let greeting = `Good ${timeOfDay}! I'm JARVIS, your intelligent study assistant.`
-    let suggestion = ""
+    // Concise status line
+    const statusParts: string[] = []
+    if ((studyContext.focus_minutes_today || 0) > 0) {
+      statusParts.push(`${studyContext.focus_minutes_today}m focused`)
+    }
+    if ((studyContext.streak_days || 0) > 0) {
+      statusParts.push(`${studyContext.streak_days} day streak`)
+    }
+    const statusLine = statusParts.length > 0 ? `📊 ${statusParts.join(" • ")}` : ""
     
-    // Backend status note
+    // Backend status (compact)
     const backendNote = backendOnline 
-      ? "🟢 AI backend connected — I can answer questions using your study materials!"
-      : "🟡 Running in local mode — start the backend for AI-powered answers."
+      ? "🟢 AI online"
+      : "🟡 Offline mode"
     
-    // Proactive suggestions based on context
-    if (context?.todayTasks && context.todayTasks.length > 0) {
-      const urgentTasks = context.todayTasks.filter(t => t.priority === 'urgent')
-      const highTasks = context.todayTasks.filter(t => t.priority === 'high')
-      
-      if (urgentTasks.length > 0) {
-        suggestion = `⚡ You have ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} — shall I help you prioritize?`
-      } else if (highTasks.length > 0) {
-        suggestion = `📋 ${context.todayTasks.length} tasks today. Ready to start a focus session?`
-      } else {
-        suggestion = `You have ${context.todayTasks.length} task${context.todayTasks.length > 1 ? 's' : ''} scheduled. How can I help?`
-      }
-    } else if (context?.habits && context.habits.length > 0) {
-      const incompleteHabits = context.habits.filter(h => {
-        const todayStr = new Date().toISOString().split('T')[0]
-        return !h.completions.some(c => c.date === todayStr && c.completed)
-      })
-      if (incompleteHabits.length > 0) {
-        suggestion = `🔥 ${incompleteHabits.length} habit${incompleteHabits.length > 1 ? 's' : ''} pending today. Want help staying on track?`
-      }
+    // Single most important action
+    let action = ""
+    const focusMinutes = studyContext.focus_minutes_today || 0
+    const overdue = studyContext.overdue_tasks || 0
+    const urgent = studyContext.urgent_task_count || 0
+    const flashcards = studyContext.flashcards_due || 0
+    const streak = studyContext.streak_days || 0
+    
+    if (overdue > 0) {
+      action = `⚠️ ${overdue} overdue task${overdue > 1 ? 's' : ''}. Let's catch up.`
+    } else if (urgent > 0 && focusMinutes === 0) {
+      action = `🎯 ${urgent} urgent task${urgent > 1 ? 's' : ''}. Start a focus session?`
+    } else if (studyContext.days_until_exam && studyContext.days_until_exam <= 7) {
+      action = `📅 ${studyContext.days_until_exam} day${studyContext.days_until_exam > 1 ? 's' : ''} until exam. Need a revision plan?`
+    } else if (flashcards > 10) {
+      action = `🃏 ${flashcards} flashcards due. Review them now?`
+    } else if (hour >= 20 && focusMinutes === 0 && streak > 0) {
+      action = `🔥 Your streak is at risk. 15 minutes will save it.`
+    } else if (focusMinutes === 0 && hour >= 8 && hour <= 22) {
+      action = "Ready to start a focus session?"
+    } else {
+      action = "What should we work on?"
     }
     
-    // Time-based suggestions
-    if (!suggestion) {
-      if (hour >= 9 && hour <= 11) {
-        suggestion = "🧠 Morning peak focus time! Shall I help you plan a deep work session?"
-      } else if (hour >= 14 && hour <= 16) {
-        suggestion = "💪 Afternoon productivity window. Ready to tackle something challenging?"
-      } else if (hour >= 20 && hour <= 22) {
-        suggestion = "🌙 Good time for review. Want me to suggest flashcards to review?"
-      } else {
-        suggestion = "How may I assist you today?"
-      }
-    }
-    
-    return `${greeting}\n\n${backendNote}\n\n${suggestion}`
+    return `${backendNote}${statusLine ? ` • ${statusLine}` : ""}\n\n${action}`
   }
 
   useEffect(() => {
@@ -310,13 +322,68 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     return message
   }, [speakOnlyIntro])
 
-  const handleSubmit = async (text?: string) => {
+  // Build study context for intelligent AI
+  const buildStudyContext = useCallback((): UserStudyContext => {
+    const today = new Date().toISOString().split('T')[0]
+    
+    // Calculate habits completed today
+    let habitsCompletedToday = 0
+    let totalHabitsToday = context?.habits?.length || 0
+    context?.habits?.forEach(h => {
+      const todayCompletion = h.completions?.find((c: { date: string; completed: boolean }) => c.date === today)
+      if (todayCompletion?.completed) habitsCompletedToday++
+    })
+    
+    // Calculate task metrics
+    let urgentTaskCount = 0
+    let overdueTasks = 0
+    const now = new Date()
+    context?.todayTasks?.forEach(t => {
+      if (t.status === 'done') return
+      if (t.priority === 'urgent') urgentTaskCount++
+      if (t.dueDate) {
+        const dueDate = (t.dueDate as any).toDate ? (t.dueDate as any).toDate() : new Date(t.dueDate)
+        if (dueDate < now) overdueTasks++
+      }
+    })
+    
+    // Find nearest exam
+    let daysUntilExam: number | undefined
+    let currentCourse: string | undefined
+    context?.courses?.forEach(c => {
+      if (c.examDate) {
+        const examDate = new Date(c.examDate)
+        const days = Math.ceil((examDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        if (days > 0 && (daysUntilExam === undefined || days < daysUntilExam)) {
+          daysUntilExam = days
+          currentCourse = c.name
+        }
+      }
+    })
+    
+    return {
+      focus_minutes_today: context?.dailyStats?.totalStudyMinutes || 0,
+      target_focus_minutes: 120,
+      habits_completed_today: habitsCompletedToday,
+      total_habits_today: totalHabitsToday,
+      flashcards_due: context?.flashcardsDue || 0,
+      streak_days: context?.dailyStats?.streakDay || 0,
+      urgent_task_count: urgentTaskCount,
+      overdue_tasks: overdueTasks,
+      current_course: currentCourse,
+      days_until_exam: daysUntilExam,
+      recent_failures: []
+    }
+  }, [context])
+
+  const handleSubmit = async (text?: string, skipIntervention: boolean = false) => {
     const messageText = (text || inputValue).trim()
     if (!messageText || isProcessing) return
 
     setInputValue("")
     setIsProcessing(true)
     stopSpeaking()
+    setPendingIntervention(null)
 
     // Add user message
     const userMessage: ChatMessage = {
@@ -328,20 +395,117 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
     setMessages(prev => [...prev, userMessage])
 
     try {
-      // Check for special commands first
+      // ==================== INTELLIGENT AI SYSTEM ====================
+      // Try to use the new intelligent AI endpoint if backend is online
+      if (backendOnline) {
+        try {
+          const studyContext = buildStudyContext()
+          
+          // Call intelligent AI endpoint
+          const result = await intelligentAsk({
+            message: messageText,
+            context: studyContext,
+            use_memory: true,
+            skip_intervention: skipIntervention
+          })
+          
+          // Handle intervention
+          if (result.intervention?.should_intervene && !skipIntervention) {
+            // Store the intervention and original request
+            setPendingIntervention({
+              message: result.intervention.message,
+              originalRequest: messageText
+            })
+            
+            // Add intervention message
+            const interventionMessage: ChatMessage = {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: result.answer,
+              timestamp: new Date(),
+              mode: result.mode,
+              isIntervention: true
+            }
+            setMessages(prev => [...prev, interventionMessage])
+            
+            // Speak the intervention
+            try {
+              speak(result.answer, { rate: 1.0, pitch: 1.0, volume: 0.7 }).catch(() => {})
+            } catch {}
+            
+            // Update proactive suggestions
+            if (result.suggestions) {
+              setProactiveSuggestions(result.suggestions)
+            }
+            
+            setIsProcessing(false)
+            return
+          }
+          
+          // Format response based on mode
+          let formattedResponse = result.answer
+          
+          // Add memory quality indicator
+          if (result.memory_used) {
+            if (result.memory_quality === "strong") {
+              formattedResponse += `\n\n💡 _Based on ${result.chunks_used} source${result.chunks_used > 1 ? 's' : ''} from your materials_`
+            } else if (result.memory_quality === "weak") {
+              formattedResponse += `\n\n⚠️ _Limited material found on this topic. Consider adding more notes._`
+            }
+          }
+          
+          // Add mode badge
+          const modeBadges: Record<AIMode, string> = {
+            plan: "📋",
+            explain: "💡",
+            quiz: "📝",
+            flashcards: "🃏",
+            review: "📖",
+            coach: "🎯"
+          }
+          
+          const assistantMessage: ChatMessage = {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: formattedResponse,
+            timestamp: new Date(),
+            mode: result.mode
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          
+          // Speak the response
+          const firstSentence = result.answer.split(/[.!?]/)[0]
+          const speakText = speakOnlyIntro && firstSentence.length > 10 
+            ? firstSentence + "..." 
+            : result.answer.length > 150 
+              ? result.answer.substring(0, 150) + "..." 
+              : result.answer
+          try {
+            speak(speakText, { rate: 1.0, pitch: 1.0, volume: 0.7 }).catch(() => {})
+          } catch {}
+          
+          // Handle structured output for flashcards mode
+          if (result.mode === "flashcards" && result.structured_output && Array.isArray(result.structured_output)) {
+            toast.success(`Created ${result.structured_output.length} flashcards!`)
+          }
+          
+          // Update proactive suggestions
+          if (result.suggestions) {
+            setProactiveSuggestions(result.suggestions)
+          }
+          
+          setIsProcessing(false)
+          return
+          
+        } catch (error: any) {
+          console.warn("Intelligent AI failed, falling back to legacy:", error)
+          // Fall through to legacy processing
+        }
+      }
+
+      // ==================== LEGACY FALLBACK ====================
       const lowerMessage = messageText.toLowerCase()
       
-      // Check if it's an AI question that should use the backend
-      const isAIQuestion = lowerMessage.includes("explain") || 
-                          lowerMessage.includes("what is") ||
-                          lowerMessage.includes("how do") ||
-                          lowerMessage.includes("help me understand") ||
-                          lowerMessage.includes("teach me") ||
-                          lowerMessage.includes("tell me about") ||
-                          lowerMessage.includes("summarize") ||
-                          lowerMessage.includes("quiz me") ||
-                          lowerMessage.includes("?")
-
       const isFlashcardRequest = lowerMessage.includes("flashcard") || 
                                   lowerMessage.includes("flash card")
 
@@ -349,11 +513,10 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
                                   lowerMessage.includes("learning plan") ||
                                   lowerMessage.includes("create a plan")
 
-      // Try to use backend AI if available and it's a knowledge question
-      if (backendOnline && (isAIQuestion || isFlashcardRequest || isStudyPlanRequest)) {
+      // Try legacy backend endpoints
+      if (backendOnline) {
         try {
           if (isFlashcardRequest) {
-            // Extract topic from message
             const topic = messageText.replace(/flashcard|flash card|create|generate|make|for|about|on/gi, "").trim() || "general knowledge"
             
             toast.loading("Generating flashcards...", { id: "flashcards" })
@@ -364,32 +527,31 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
             })
             toast.success(`Created ${result.count} flashcards!`, { id: "flashcards" })
             
-            addAssistantMessage(`I've created ${result.count} flashcards on "${topic}"! 🃏\n\nHere's a preview:\n${result.flashcards.slice(0, 2).map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}${result.count > 2 ? `\n\n...and ${result.count - 2} more. Go to Flashcards to review them all!` : ""}`, {
+            addAssistantMessage(`🃏 Created ${result.count} flashcards on "${topic}".\n\nPreview:\n${result.flashcards.slice(0, 2).map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}${result.count > 2 ? `\n\n...and ${result.count - 2} more.` : ""}`, {
               type: "navigate",
               data: { path: "/flashcards" }
             })
+            return
           } else if (isStudyPlanRequest) {
-            // Extract subject from message
             const subject = messageText.replace(/study plan|learning plan|create|a|plan|for|about|on/gi, "").trim() || "general studies"
             
-            toast.loading("Creating your study plan...", { id: "studyplan" })
+            toast.loading("Creating study plan...", { id: "studyplan" })
             const result = await createStudyPlan({
               subject,
               days: 7,
               retrieve_materials: true
             })
-            toast.success("Study plan created!", { id: "studyplan" })
+            toast.success("Plan created!", { id: "studyplan" })
             
-            addAssistantMessage(`📚 Here's your ${result.days}-day study plan for ${result.subject}:\n\n${result.plan}\n\n${result.materials_used > 0 ? `✨ I used ${result.materials_used} of your saved materials to personalize this plan.` : ""}`)
+            addAssistantMessage(`📋 ${result.days}-day plan for ${result.subject}:\n\n${result.plan}${result.materials_used > 0 ? `\n\n_Used ${result.materials_used} of your materials._` : ""}`)
+            return
           } else {
-            // General AI question - use RAG
-            toast.loading("Thinking...", { id: "ai-thinking" })
+            // General AI question
             const result = await askAI({
               question: messageText,
               use_memory: true,
               top_k: 5
             })
-            toast.dismiss("ai-thinking")
             
             let response = result.answer
             if (result.context_used && result.sources_count > 0) {
@@ -397,26 +559,25 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
             }
             
             addAssistantMessage(response)
+            return
           }
-          return
         } catch (error: any) {
           console.error("Backend AI error:", error)
           toast.dismiss("ai-thinking")
           toast.dismiss("flashcards")
           toast.dismiss("studyplan")
-          // Fall through to local command processing
         }
       }
 
-      // Use local command parser and executor for actions
+      // ==================== LOCAL COMMAND PROCESSING ====================
       const commandParser = getCommandParser()
       const commandExecutor = getCommandExecutor()
 
       const commandContext: CommandContext = {
         userId: user?.uid || '',
         currentPage: pathname,
-        recentActions: [], // Could be populated from message history
-        userPreferences: {}, // Could be loaded from user settings
+        recentActions: [],
+        userPreferences: {},
         availableData: {
           tasks: context?.todayTasks,
           courses: context?.courses,
@@ -429,38 +590,22 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
 
       addAssistantMessage(result.message)
 
-      // Handle actions from new executor
-      if (result.data) {
-        // Handle navigation actions
-        if (result.data.path) {
-          setTimeout(() => {
-            router.push(result.data.path)
-          }, 1000)
-        }
-
-        // Handle task creation
-        if (result.data.taskId && parsedCommand.intent === 'task.create') {
-          // Could refresh tasks here
-        }
-
-        // Handle habit completion
-        if (result.data.habitId && parsedCommand.intent === 'habit.complete') {
-          // Could refresh habits here
-        }
+      if (result.data?.path) {
+        setTimeout(() => router.push(result.data.path), 1000)
       }
 
-      // Handle multi-step command continuation
-      if (result.requiresUserInput) {
-        // For now, just acknowledge - could be enhanced to handle follow-up questions
-        addAssistantMessage("What would you like to do next?", {
-          type: "none",
-          data: { commandId: result.nextStep }
-        })
-      }
     } catch (error: any) {
-      addAssistantMessage(`I apologize, but I encountered an error: ${error.message}`)
+      addAssistantMessage(`Error: ${error.message}. Try again.`)
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  // Handle continuing after intervention
+  const handleContinueAnyway = () => {
+    if (pendingIntervention) {
+      handleSubmit(pendingIntervention.originalRequest, true)
+      setPendingIntervention(null)
     }
   }
 
@@ -475,7 +620,8 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
 
   const clearChat = () => {
     setMessages([])
-    addAssistantMessage("Memory cleared. How may I assist you?")
+    setPendingIntervention(null)
+    addAssistantMessage("Ready. What should we work on?")
   }
 
   const suggestions = getSuggestedActions(userContext)
@@ -484,34 +630,18 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
 
   return (
     <>
-      {/* Floating trigger orb */}
+      {/* Compact floating trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 group transition-all duration-500 ${
+        className={`fixed bottom-6 right-6 z-50 group transition-all duration-300 ${
           isOpen ? "scale-0 opacity-0" : "scale-100 opacity-100"
         }`}
-        aria-label="Open JARVIS"
+        aria-label="Open AI Coach"
       >
-        <div className="relative">
-          {/* Outer glow rings */}
-          <div className="absolute inset-0 w-16 h-16 rounded-full bg-blue-400/20 animate-ping" />
-          <div className="absolute inset-0 w-16 h-16 rounded-full bg-blue-400/10 animate-pulse" />
-          
-          {/* Main orb */}
-          <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-500 shadow-lg shadow-blue-500/30 flex items-center justify-center overflow-hidden">
-            {/* Inner glow */}
-            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-blue-300/50 to-transparent" />
-            
-            {/* Core */}
-            <div className="relative w-8 h-8 rounded-full bg-gradient-to-br from-white via-blue-100 to-blue-200 shadow-inner flex items-center justify-center">
-              <div className="w-4 h-4 rounded-full bg-white/90 animate-pulse" />
-            </div>
-          </div>
-          
-          {/* Hover text */}
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity font-mono">
-            JARVIS
-          </span>
+        <div className="relative flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-800 border border-slate-700 shadow-lg hover:bg-slate-700 transition-all">
+          {/* Status dot */}
+          <div className={`w-2 h-2 rounded-full ${backendOnline ? 'bg-green-500' : 'bg-amber-500'}`} />
+          <span className="text-sm font-medium text-white">Ask AI</span>
         </div>
       </button>
 
@@ -551,8 +681,10 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
                 </div>
 
                 <div>
-                  <h3 className="font-bold text-blue-600 tracking-wider font-mono text-sm">Study AI Assistant</h3>
-                  <p className="text-[10px] text-blue-500 font-mono tracking-widest">J.A.R.V.I.S - Intelligent Study Companion</p>
+                  <h3 className="font-semibold text-blue-600 text-sm">AI Coach</h3>
+                  <p className="text-[10px] text-slate-500">
+                    {backendOnline ? "Online" : "Offline"}
+                  </p>
                 </div>
               </div>
 
@@ -600,38 +732,21 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
             </div>
 
             {/* Voice instruction */}
-            <div className="mt-3 text-xs text-blue-600 font-mono px-3 py-2 bg-blue-50/50 rounded-lg border border-blue-200/30">
-              💬 Ask me anything about your studies • 🎯 Get personalized help • 📚 Create study materials
+            <div className="mt-2 text-xs text-slate-500 px-3 py-1.5 bg-slate-50/50 rounded-lg">
+              Ask me anything • Create flashcards • Get study help
             </div>
           </div>
 
-          {/* Dynamic Context Chips */}
-          <div className="px-5 py-3 border-b border-gray-200/50 bg-blue-50/30">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-blue-600 font-mono font-semibold">CONTEXT:</span>
-              {userContext.currentPage && (
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium border border-blue-200/50">
-                  📍 {userContext.currentPage}
-                </span>
-              )}
+          {/* Context indicator - more compact */}
+          <div className="px-4 py-2 border-b border-gray-200/50 bg-slate-50/30">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-500">Context:</span>
+              <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">
+                {userContext.currentPage || 'dashboard'}
+              </span>
               {context?.todayTasks && context.todayTasks.length > 0 && (
-                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium border border-green-200/50">
-                  ✅ {context.todayTasks.length} tasks today
-                </span>
-              )}
-              {context?.courses && context.courses.length > 0 && (
-                <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium border border-purple-200/50">
-                  📚 {context.courses.length} courses
-                </span>
-              )}
-              {context?.habits && context.habits.length > 0 && (
-                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium border border-orange-200/50">
-                  🎯 {context.habits.length} habits
-                </span>
-              )}
-              {(!userContext.currentPage && (!context?.todayTasks || context.todayTasks.length === 0) && (!context?.courses || context.courses.length === 0)) && (
-                <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium border border-gray-200/50">
-                  🌟 Ready to help with your studies
+                <span className="px-2 py-0.5 bg-green-100 text-green-600 rounded text-[10px]">
+                  {context.todayTasks.length} tasks
                 </span>
               )}
             </div>
@@ -644,104 +759,81 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
             <div className="absolute top-20 right-4 w-px h-8 bg-gradient-to-b from-blue-400/30 to-transparent" />
 
             {messages.length === 0 && (
-              <div className="space-y-6">
-                {/* Quick Action Pills - Organized by Category */}
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-xs font-mono text-blue-600 mb-3 tracking-wider font-semibold">📝 CREATE STUDY MATERIALS</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => handleSubmit(context?.courses?.length ? "Create flashcards for my courses" : "Create flashcards for today's topic")}
-                        className="px-3 py-2 bg-blue-100 text-blue-700 rounded-full text-xs font-medium hover:bg-blue-200 transition-all hover:scale-105 border border-blue-200/50"
-                      >
-                        🃏 Flashcards
-                      </button>
-                      <button
-                        onClick={() => handleSubmit(context?.todayTasks?.length ? "Generate a quiz for my today's tasks" : "Generate a quiz for what I learned today")}
-                        className="px-3 py-2 bg-green-100 text-green-700 rounded-full text-xs font-medium hover:bg-green-200 transition-all hover:scale-105 border border-green-200/50"
-                      >
-                        ❓ Quiz Me
-                      </button>
-                      <button
-                        onClick={() => handleSubmit("Create a study plan for this week")}
-                        className="px-3 py-2 bg-purple-100 text-purple-700 rounded-full text-xs font-medium hover:bg-purple-200 transition-all hover:scale-105 border border-purple-200/50"
-                      >
-                        📅 Study Plan
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-mono text-blue-600 mb-3 tracking-wider font-semibold">🎯 GET HELP & EXPLANATIONS</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => handleSubmit("Explain this concept simply")}
-                        className="px-3 py-2 bg-orange-100 text-orange-700 rounded-full text-xs font-medium hover:bg-orange-200 transition-all hover:scale-105 border border-orange-200/50"
-                      >
-                        💡 Explain Concept
-                      </button>
-                      <button
-                        onClick={() => handleSubmit("Help me understand this problem")}
-                        className="px-3 py-2 bg-red-100 text-red-700 rounded-full text-xs font-medium hover:bg-red-200 transition-all hover:scale-105 border border-red-200/50"
-                      >
-                        🤔 Problem Help
-                      </button>
-                      <button
-                        onClick={() => handleSubmit("Give me study tips")}
-                        className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium hover:bg-indigo-200 transition-all hover:scale-105 border border-indigo-200/50"
-                      >
-                        💪 Study Tips
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-mono text-blue-600 mb-3 tracking-wider font-semibold">⚡ QUICK ACTIONS</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => handleSubmit(context?.todayTasks?.length ? "Start a 25-minute focus session on my first task" : "Start a 25-minute focus session")}
-                        className="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium hover:bg-emerald-200 transition-all hover:scale-105 border border-emerald-200/50"
-                      >
-                        ⏱️ Focus Timer
-                      </button>
-                      <button
-                        onClick={() => handleSubmit("Review my progress this week")}
-                        className="px-3 py-2 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium hover:bg-cyan-200 transition-all hover:scale-105 border border-cyan-200/50"
-                      >
-                        📊 Progress Review
-                      </button>
-                      <button
-                        onClick={() => handleSubmit("What's my study streak?")}
-                        className="px-3 py-2 bg-pink-100 text-pink-700 rounded-full text-xs font-medium hover:bg-pink-200 transition-all hover:scale-105 border border-pink-200/50"
-                      >
-                        🔥 Study Streak
-                      </button>
-                    </div>
+              <div className="space-y-4">
+                {/* Proactive Suggestions - Study Intelligence System */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wide">What's Next</h4>
+                  
+                  {/* Dynamic suggestions from AI or computed locally */}
+                  <div className="space-y-2">
+                    {proactiveSuggestions.length > 0 ? (
+                      // Use suggestions from intelligent AI system
+                      proactiveSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.id}
+                          onClick={() => handleSubmit(suggestion.action)}
+                          className={`w-full p-3 text-left rounded-lg border transition-all group ${
+                            suggestion.priority === 'urgent' 
+                              ? 'bg-red-50 hover:bg-red-100 border-red-200/50' 
+                              : suggestion.priority === 'high'
+                                ? 'bg-amber-50 hover:bg-amber-100 border-amber-200/50'
+                                : 'bg-blue-50 hover:bg-blue-100 border-blue-200/50'
+                          }`}
+                        >
+                          <p className={`text-sm font-medium ${
+                            suggestion.priority === 'urgent' 
+                              ? 'text-red-700' 
+                              : suggestion.priority === 'high'
+                                ? 'text-amber-700'
+                                : 'text-slate-700'
+                          }`}>
+                            {suggestion.icon} {suggestion.message}
+                          </p>
+                        </button>
+                      ))
+                    ) : (
+                      // Fallback local suggestions
+                      <>
+                        {context?.todayTasks && context.todayTasks.some(t => t.priority === 'urgent' || t.priority === 'high') ? (
+                          <button
+                            onClick={() => handleSubmit("Help me prioritize my tasks and start a focus session")}
+                            className="w-full p-3 bg-amber-50 hover:bg-amber-100 text-left rounded-lg border border-amber-200/50 transition-all"
+                          >
+                            <p className="text-sm font-medium text-amber-700">
+                              🎯 Start focus session on priority tasks
+                            </p>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleSubmit("Help me plan my next study session")}
+                            className="w-full p-3 bg-blue-50 hover:bg-blue-100 text-left rounded-lg border border-blue-200/50 transition-all"
+                          >
+                            <p className="text-sm text-slate-700">
+                              📋 Plan next study session
+                            </p>
+                          </button>
+                        )}
+                        
+                        <button
+                          onClick={() => handleSubmit("Generate flashcards from my recent notes")}
+                          className="w-full p-3 bg-purple-50 hover:bg-purple-100 text-left rounded-lg border border-purple-200/50 transition-all"
+                        >
+                          <p className="text-sm text-slate-700">
+                            🃏 Generate flashcards
+                          </p>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-
-                {/* Enhanced Capabilities Section */}
-                <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 border border-blue-200/30">
-                  <h4 className="text-xs font-mono text-blue-600 mb-3 tracking-wider font-semibold">🚀 JARVIS CAPABILITIES</h4>
-                  <div className="grid grid-cols-1 gap-3 text-xs text-gray-600">
-                    <div className="flex items-start gap-2">
-                      <BookOpen className="w-3 h-3 text-blue-500 mt-0.5 flex-shrink-0" />
-                      <span>Generate flashcards, quizzes, and study plans from any topic</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Target className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
-                      <span>Provide personalized explanations and problem-solving help</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Lightbulb className="w-3 h-3 text-purple-500 mt-0.5 flex-shrink-0" />
-                      <span>Track your progress and suggest optimal study strategies</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Navigation className="w-3 h-3 text-orange-500 mt-0.5 flex-shrink-0" />
-                      <span>Navigate the app and control study sessions with voice commands</span>
-                    </div>
+                
+                {/* Backend offline notice */}
+                {!backendOnline && (
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200/50 text-xs text-amber-700">
+                    <p className="font-medium">AI features limited</p>
+                    <p className="text-amber-600 mt-0.5">Start the backend to enable AI-powered planning & flashcard generation.</p>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -754,16 +846,21 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
                   className={`max-w-[85%] ${
                     msg.role === "user"
                       ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-2xl rounded-br-md shadow-sm"
-                      : "bg-white/90 border border-gray-200/50 text-gray-800 rounded-2xl rounded-bl-md shadow-sm"
+                      : msg.isIntervention
+                        ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-bl-md shadow-sm"
+                        : "bg-white/90 border border-gray-200/50 text-gray-800 rounded-2xl rounded-bl-md shadow-sm"
                   } px-4 py-3 relative overflow-hidden`}
                 >
                   {msg.role === "assistant" && (
-                    <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
+                    <div className={`absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent ${msg.isIntervention ? 'via-amber-400/50' : 'via-blue-400/30'} to-transparent`} />
                   )}
                   
                   {msg.role === "assistant" && (
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-mono text-blue-600">JARVIS</span>
+                      {msg.isIntervention && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+                      <span className={`text-[10px] font-mono ${msg.isIntervention ? 'text-amber-600' : 'text-blue-600'}`}>
+                        {msg.isIntervention ? 'INTERVENTION' : msg.mode?.toUpperCase() || 'AI'}
+                      </span>
                       <span className="text-[10px] text-gray-500">
                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -782,6 +879,18 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
                 </div>
               </div>
             ))}
+
+            {/* Intervention continue button */}
+            {pendingIntervention && !isProcessing && (
+              <div className="flex justify-center">
+                <button
+                  onClick={handleContinueAnyway}
+                  className="px-4 py-2 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors"
+                >
+                  Continue with original request anyway →
+                </button>
+              </div>
+            )}
 
             {isProcessing && (
               <div className="flex justify-start">

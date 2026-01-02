@@ -36,7 +36,7 @@ setup_ngrok() {
     echo -e "${CYAN}  🚀 NGROK SETUP${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    
+
     if ! command -v ngrok &> /dev/null; then
         echo -e "${YELLOW}⚠️  Ngrok is not installed${NC}"
         echo ""
@@ -48,6 +48,167 @@ setup_ngrok() {
         echo "After installation, authenticate:"
         echo "  ngrok authtoken YOUR_TOKEN"
         echo ""
+        read -p "Press Enter after installing and authenticating Ngrok..."
+    fi
+
+    echo "Starting Ngrok tunnel..."
+    echo -e "${BLUE}Command: ngrok http 8000${NC}"
+    echo ""
+
+    # Start ngrok in background
+    ngrok http 8000 &
+    NGROK_PID=$!
+
+    # Wait for ngrok to start
+    echo "Waiting for Ngrok to initialize..."
+    sleep 5
+
+    # Get tunnel URL
+    TUNNEL_URL=""
+    for i in {1..10}; do
+        TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"[^"]*"' | cut -d'"' -f4 | head -1)
+        if [ -n "$TUNNEL_URL" ]; then
+            break
+        fi
+        echo "Waiting for tunnel URL... ($i/10)"
+        sleep 2
+    done
+
+    if [ -z "$TUNNEL_URL" ]; then
+        echo -e "${RED}❌ Failed to get Ngrok tunnel URL${NC}"
+        echo "Check if Ngrok is authenticated:"
+        echo "  ngrok authtoken YOUR_TOKEN"
+        kill $NGROK_PID 2>/dev/null
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}✅ Ngrok tunnel active!${NC}"
+    echo -e "${CYAN}Public URL: ${TUNNEL_URL}${NC}"
+    echo ""
+
+    # Instructions
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  📋 NEXT STEPS${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "1. Copy this URL: ${TUNNEL_URL}"
+    echo ""
+    echo "2. Go to Netlify:"
+    echo "   https://app.netlify.com/sites/assistantstudy"
+    echo ""
+    echo "3. Site settings → Environment variables"
+    echo ""
+    echo "4. Add/Update:"
+    echo "   Key: NEXT_PUBLIC_API_URL"
+    echo "   Value: ${TUNNEL_URL}"
+    echo ""
+    echo "5. Trigger deploy (Deploy settings → Trigger deploy)"
+    echo ""
+    echo "6. Open: https://assistantstudy.netlify.app"
+    echo ""
+    echo -e "${YELLOW}Keep this terminal open to maintain the tunnel!${NC}"
+    echo ""
+    echo "To stop: Ctrl+C or kill $NGROK_PID"
+
+    # Wait for user
+    wait $NGROK_PID
+}
+
+# Function to setup LocalTunnel (fallback option)
+setup_localtunnel() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  🌐 LOCALTUNNEL SETUP${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    if ! command -v lt &> /dev/null; then
+        echo -e "${YELLOW}⚠️  LocalTunnel is not installed${NC}"
+        echo ""
+        echo "Installing LocalTunnel..."
+        npm install -g localtunnel || {
+            echo -e "${RED}❌ Failed to install localtunnel${NC}"
+            exit 1
+        }
+    fi
+
+    echo "Starting LocalTunnel..."
+    echo -e "${BLUE}Command: lt --port 8000${NC}"
+    echo ""
+    echo -e "${YELLOW}Note: LocalTunnel URLs are temporary and may change${NC}"
+    echo ""
+
+    # Start localtunnel
+    lt --port 8000 &
+    LT_PID=$!
+
+    # Wait for tunnel to start
+    sleep 3
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  📋 NEXT STEPS${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "1. Look above for your tunnel URL (https://xyz.loca.lt)"
+    echo ""
+    echo "2. Copy the HTTPS URL from the output above"
+    echo ""
+    echo "3. Go to Netlify:"
+    echo "   https://app.netlify.com/sites/assistantstudy"
+    echo ""
+    echo "4. Site settings → Environment variables"
+    echo ""
+    echo "5. Add/Update:"
+    echo "   Key: NEXT_PUBLIC_API_URL"
+    echo "   Value: <your-localtunnel-url>"
+    echo ""
+    echo "6. Trigger deploy (Deploy settings → Trigger deploy)"
+    echo ""
+    echo "7. Open: https://assistantstudy.netlify.app"
+    echo ""
+    echo -e "${YELLOW}Keep this terminal open to maintain the tunnel!${NC}"
+    echo ""
+    echo "To stop: Ctrl+C or kill $LT_PID"
+
+    # Wait for user
+    wait $LT_PID
+}
+
+# Main menu
+while true; do
+    echo "Choose your tunnel provider:"
+    echo ""
+    echo -e "${GREEN}  1) Ngrok${NC} (Quick testing, requires account)"
+    echo -e "${BLUE}  2) Cloudflare Tunnel${NC} (Stable, free forever)"
+    echo -e "${CYAN}  3) LocalTunnel${NC} (Simple, no account needed)"
+    echo -e "${YELLOW}  4) Exit${NC}"
+    echo ""
+    read -p "Enter your choice (1-4): " choice
+
+    case $choice in
+        1)
+            setup_ngrok
+            break
+            ;;
+        2)
+            setup_cloudflare
+            break
+            ;;
+        3)
+            setup_localtunnel
+            break
+            ;;
+        4)
+            echo "Goodbye!"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid choice. Please enter 1, 2, 3, or 4.${NC}"
+            ;;
+    esac
+done
         return 1
     fi
     

@@ -8,6 +8,7 @@ set -e
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
@@ -25,13 +26,25 @@ echo -e "${BLUE}[1/5]${NC} Checking Qdrant..."
 if ! curl -s http://localhost:6333/health > /dev/null 2>&1; then
     echo "Starting Qdrant..."
     if docker ps -a | grep -q qdrant; then
-        docker start qdrant
+        docker start qdrant || {
+            echo -e "${RED}❌ Failed to start existing Qdrant container${NC}"
+            exit 1
+        }
     else
         docker run -d -p 6333:6333 -p 6334:6334 \
             -v qdrant_storage:/qdrant/storage \
-            --name qdrant qdrant/qdrant
+            --name qdrant qdrant/qdrant || {
+            echo -e "${RED}❌ Failed to create Qdrant container${NC}"
+            echo "Make sure Docker is running"
+            exit 1
+        }
     fi
     sleep 3
+    # Verify Qdrant is actually running
+    if ! curl -s http://localhost:6333/health > /dev/null 2>&1; then
+        echo -e "${RED}❌ Qdrant failed to start properly${NC}"
+        exit 1
+    fi
 fi
 echo -e "${GREEN}✅ Qdrant running${NC}"
 
@@ -39,10 +52,20 @@ echo -e "${GREEN}✅ Qdrant running${NC}"
 echo ""
 echo -e "${BLUE}[2/5]${NC} Checking Ollama..."
 if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo -e "${YELLOW}⚠️  Ollama not running${NC}"
+    echo -e "${RED}❌ Ollama is not running${NC}"
+    echo ""
     echo "Start Ollama in another terminal:"
     echo "  ollama serve"
+    echo ""
+    echo "Or install Ollama first:"
+    echo "  brew install ollama"
+    echo ""
     read -p "Press Enter when Ollama is running..."
+    # Re-check after user input
+    if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+        echo -e "${RED}❌ Ollama is still not running${NC}"
+        exit 1
+    fi
 fi
 echo -e "${GREEN}✅ Ollama running${NC}"
 
@@ -65,17 +88,28 @@ echo -e "${GREEN}✅ Models ready${NC}"
 echo ""
 echo -e "${BLUE}[4/5]${NC} Starting backend..."
 cd "$PROJECT_ROOT"
-source .venv/bin/activate
+if [ ! -d ".venv" ]; then
+    echo -e "${RED}❌ Virtual environment not found${NC}"
+    echo "Run: python3 -m venv .venv"
+    exit 1
+fi
+source .venv/bin/activate || {
+    echo -e "${RED}❌ Failed to activate virtual environment${NC}"
+    exit 1
+}
 cd backend
 python app.py &
 BACKEND_PID=$!
-sleep 3
+sleep 5  # Give more time for startup
 
-if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Backend running (PID: $BACKEND_PID)${NC}"
-else
-    echo -e "${YELLOW}⚠️  Backend may not be ready yet${NC}"
+# Check if backend is actually running
+if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    echo -e "${RED}❌ Backend failed to start${NC}"
+    echo "Check backend logs above for errors"
+    kill $BACKEND_PID 2>/dev/null
+    exit 1
 fi
+echo -e "${GREEN}✅ Backend running (PID: $BACKEND_PID)${NC}"
 
 # Step 5: Setup tunnel
 echo ""

@@ -1,16 +1,18 @@
 """
 AI Routes - Retrieval Augmented Generation Pipeline
 Handles intelligent question answering, flashcard generation, and study planning
+Includes EXAM-GRADE flashcard generation system
 """
 
 import logging
 import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 
 from services.memory_service import get_memory_service
 from services.ollama_service import get_ollama_service
+from services.flashcard_engine import create_flashcard_engine, ExamGradeFlashcard, CardType, Difficulty
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -72,6 +74,63 @@ class StudyPlanResponse(BaseModel):
     subject: str
     days: int
     materials_used: int
+
+
+# ==================== EXAM-GRADE FLASHCARD MODELS ====================
+
+class ExamGradeFlashcardRequest(BaseModel):
+    """Request model for exam-grade flashcard generation"""
+    text: Optional[str] = Field(None, description="Source text for flashcards")
+    topic: str = Field(..., min_length=1, description="Topic for flashcards")
+    num_cards: int = Field(10, ge=1, le=50, description="Number of flashcards to generate")
+    difficulty: Literal["beginner", "intermediate", "advanced", "expert"] = Field(
+        "intermediate", description="Target difficulty level"
+    )
+    use_memory: bool = Field(True, description="Retrieve content from memory if no text provided")
+    user_mistakes: Optional[List[str]] = Field(None, description="User's past mistakes for TRAP card generation")
+    force_card_types: Optional[List[str]] = Field(None, description="Force specific card types")
+
+
+class ExamGradeFlashcardData(BaseModel):
+    """Individual exam-grade flashcard model"""
+    id: str
+    type: str
+    question: str
+    answer: str
+    difficulty: str
+    topic: str
+    subtopic: Optional[str]
+    source: str
+    exam_relevance: int
+    key_terms: List[str]
+    created_at: str
+    mistake_prone: bool
+
+
+class ExamGradeFlashcardResponse(BaseModel):
+    """Response model for exam-grade flashcard generation"""
+    flashcards: List[ExamGradeFlashcardData]
+    count: int
+    source: str
+    card_type_distribution: Dict[str, int]
+    difficulty: str
+
+
+class TrapCardRequest(BaseModel):
+    """Request model for generating TRAP cards from mistakes"""
+    mistakes: List[Dict[str, str]] = Field(..., description="List of {question, wrong_answer, correct_answer}")
+    topic: str = Field(..., description="Related topic")
+    num_cards: int = Field(5, ge=1, le=20, description="Number of trap cards to generate")
+
+
+class ExamSimulationRequest(BaseModel):
+    """Request model for exam simulation cards"""
+    topic: str = Field(..., description="Main exam topic")
+    subtopics: List[str] = Field(..., description="Specific subtopics to cover")
+    exam_format: Literal["multiple_choice", "short_answer", "essay"] = Field(
+        "multiple_choice", description="Type of exam format"
+    )
+    num_cards: int = Field(10, ge=1, le=30, description="Number of exam cards")
 
 
 # ==================== ENDPOINTS ====================
@@ -333,3 +392,190 @@ async def ai_health() -> Dict[str, str]:
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+# ==================== EXAM-GRADE FLASHCARD ENDPOINTS ====================
+
+@router.post("/flashcards/exam-grade", response_model=ExamGradeFlashcardResponse)
+async def generate_exam_grade_flashcards(request: ExamGradeFlashcardRequest) -> Dict[str, Any]:
+    """
+    Generate EXAM-GRADE flashcards - world-class memory weapons.
+    
+    Card Types Generated:
+    - definition: "What is X?" → core concept
+    - why: "Why does X happen?" → causation/purpose
+    - how: "How does X work?" → process/mechanism
+    - compare: "Compare X vs Y" → similarities/differences
+    - trap: "Common mistake about X" → misconception buster
+    - example: "Give an example of X" → concrete application
+    - exam: "Exam-style question on X" → test-ready format
+    
+    Args:
+        request: Topic, content, difficulty, and user mistakes
+    
+    Returns:
+        Array of exam-grade flashcards with full metadata
+    """
+    try:
+        content = None
+        source = "user_content"
+        
+        # Determine content source
+        if request.text:
+            content = request.text
+            source = "provided_text"
+        elif request.use_memory:
+            # Retrieve content from memory
+            try:
+                memory = get_memory_service()
+                search_results = memory.search(request.topic, top_k=10)
+                
+                if search_results:
+                    # Filter by quality threshold
+                    quality_results = [r for r in search_results if r.get('score', 0) >= 0.5]
+                    if quality_results:
+                        content_parts = [result['text'] for result in quality_results[:5]]
+                        content = "\n\n".join(content_parts)
+                        source = f"memory_retrieval ({len(quality_results)} high-quality chunks)"
+                        logger.info(f"✓ Retrieved {len(quality_results)} quality chunks for topic: {request.topic}")
+            except Exception as e:
+                logger.warning(f"Memory retrieval failed: {e}")
+        
+        if not content:
+            # Generate from topic description only
+            content = f"Generate comprehensive exam-grade flashcards about: {request.topic}"
+            source = "topic_only"
+        
+        # Create flashcard engine and generate
+        ollama = get_ollama_service()
+        engine = create_flashcard_engine(ollama)
+        
+        # Parse force_card_types if provided
+        force_types = None
+        if request.force_card_types:
+            valid_types = ["definition", "why", "how", "compare", "trap", "example", "exam"]
+            force_types = [t for t in request.force_card_types if t in valid_types]
+            if len(force_types) != request.num_cards:
+                force_types = None  # Invalid, use auto distribution
+        
+        flashcards = engine.generate_exam_grade_flashcards(
+            content=content,
+            topic=request.topic,
+            num_cards=request.num_cards,
+            difficulty=request.difficulty,
+            source=source,
+            user_mistakes=request.user_mistakes,
+            force_card_types=force_types
+        )
+        
+        # Calculate card type distribution
+        type_distribution = {}
+        for card in flashcards:
+            type_distribution[card.type] = type_distribution.get(card.type, 0) + 1
+        
+        logger.info(f"✓ Generated {len(flashcards)} exam-grade flashcards")
+        
+        return {
+            "flashcards": [card.to_dict() for card in flashcards],
+            "count": len(flashcards),
+            "source": source,
+            "card_type_distribution": type_distribution,
+            "difficulty": request.difficulty
+        }
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Flashcard generation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to generate exam-grade flashcards: {e}")
+        raise HTTPException(status_code=500, detail=f"Exam-grade flashcard generation failed: {str(e)}")
+
+
+@router.post("/flashcards/trap-cards")
+async def generate_trap_cards(request: TrapCardRequest) -> Dict[str, Any]:
+    """
+    Generate TRAP cards from user's past mistakes.
+    
+    Automatically creates misconception-busting flashcards that target
+    the exact areas where the user has failed before.
+    
+    Args:
+        request: List of mistakes and topic
+    
+    Returns:
+        Array of TRAP-type flashcards
+    """
+    try:
+        if not request.mistakes:
+            raise HTTPException(status_code=400, detail="At least one mistake is required")
+        
+        ollama = get_ollama_service()
+        engine = create_flashcard_engine(ollama)
+        
+        trap_cards = engine.generate_trap_cards_from_mistakes(
+            mistakes=request.mistakes,
+            topic=request.topic,
+            num_cards=request.num_cards
+        )
+        
+        logger.info(f"✓ Generated {len(trap_cards)} TRAP cards from mistakes")
+        
+        return {
+            "flashcards": [card.to_dict() for card in trap_cards],
+            "count": len(trap_cards),
+            "source": "mistake_analysis",
+            "all_trap_type": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate trap cards: {e}")
+        raise HTTPException(status_code=500, detail=f"TRAP card generation failed: {str(e)}")
+
+
+@router.post("/flashcards/exam-simulation")
+async def generate_exam_simulation(request: ExamSimulationRequest) -> Dict[str, Any]:
+    """
+    Generate flashcards that simulate real exam questions.
+    
+    Creates cards phrased exactly like real exam questions
+    for maximum test preparation effectiveness.
+    
+    Args:
+        request: Topic, subtopics, and exam format
+    
+    Returns:
+        Array of EXAM-type flashcards
+    """
+    try:
+        if not request.subtopics:
+            raise HTTPException(status_code=400, detail="At least one subtopic is required")
+        
+        ollama = get_ollama_service()
+        engine = create_flashcard_engine(ollama)
+        
+        exam_cards = engine.generate_exam_simulation_cards(
+            topic=request.topic,
+            subtopics=request.subtopics,
+            exam_format=request.exam_format,
+            num_cards=request.num_cards
+        )
+        
+        logger.info(f"✓ Generated {len(exam_cards)} exam simulation cards")
+        
+        return {
+            "flashcards": [card.to_dict() for card in exam_cards],
+            "count": len(exam_cards),
+            "source": "exam_simulation",
+            "exam_format": request.exam_format,
+            "subtopics_covered": request.subtopics
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate exam simulation: {e}")
+        raise HTTPException(status_code=500, detail=f"Exam simulation generation failed: {str(e)}")

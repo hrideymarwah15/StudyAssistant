@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 # Import routers
 from routes import audio_routes, material_routes, ai_routes
+from routes import ai_routes_v2  # New intelligent AI system
 
 # Configure logging
 logging.basicConfig(
@@ -121,6 +122,7 @@ app.add_middleware(
 app.include_router(audio_routes.router)
 app.include_router(material_routes.router)
 app.include_router(ai_routes.router)
+app.include_router(ai_routes_v2.router)  # New intelligent AI system
 
 
 # Root endpoint
@@ -131,12 +133,13 @@ async def root():
     """
     return {
         "service": "StudyPal AI OS",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "operational",
         "endpoints": {
             "audio": "/audio/upload",
             "materials": "/materials/add",
             "ask": "/ai/ask",
+            "intelligent_ask": "/ai/intelligent-ask",  # New intelligent endpoint
             "flashcards": "/ai/flashcards/generate",
             "study_plan": "/ai/plan/create"
         },
@@ -287,5 +290,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
+        reload_excludes=["venv/*", ".venv/*", "__pycache__/*", "*.pyc"],
         log_level="info"
     )

@@ -266,6 +266,116 @@ export async function generateFlashcards(
 }
 
 // ============================================================================
+// EXAM-GRADE FLASHCARDS (World-Class Memory System)
+// ============================================================================
+
+export type FlashcardType = "definition" | "why" | "how" | "compare" | "trap" | "example" | "exam"
+export type FlashcardDifficulty = "beginner" | "intermediate" | "advanced" | "expert"
+
+export interface ExamGradeFlashcardRequest {
+  text?: string
+  topic: string
+  num_cards?: number
+  difficulty?: FlashcardDifficulty
+  use_memory?: boolean
+  user_mistakes?: string[]
+  force_card_types?: FlashcardType[]
+}
+
+export interface ExamGradeFlashcard {
+  id: string
+  type: FlashcardType
+  question: string
+  answer: string
+  difficulty: FlashcardDifficulty
+  topic: string
+  subtopic?: string
+  source: string
+  exam_relevance: number
+  key_terms: string[]
+  created_at: string
+  mistake_prone: boolean
+}
+
+export interface ExamGradeFlashcardResponse {
+  flashcards: ExamGradeFlashcard[]
+  count: number
+  source: string
+  card_type_distribution: Record<string, number>
+  difficulty: FlashcardDifficulty
+}
+
+export interface TrapCardRequest {
+  mistakes: Array<{
+    question: string
+    wrong_answer: string
+    correct_answer: string
+  }>
+  topic: string
+  num_cards?: number
+}
+
+export interface TrapCardResponse {
+  flashcards: ExamGradeFlashcard[]
+  count: number
+  source: string
+  all_trap_type: boolean
+}
+
+export interface ExamSimulationRequest {
+  topic: string
+  subtopics: string[]
+  exam_format?: "multiple_choice" | "short_answer" | "essay"
+  num_cards?: number
+}
+
+export interface ExamSimulationResponse {
+  flashcards: ExamGradeFlashcard[]
+  count: number
+  source: string
+  exam_format: string
+  subtopics_covered: string[]
+}
+
+/**
+ * Generate exam-grade flashcards with 7 card types and full metadata.
+ * Uses Qwen2.5 for high-quality, one-concept-per-card generation.
+ */
+export async function generateExamGradeFlashcards(
+  data: ExamGradeFlashcardRequest
+): Promise<ExamGradeFlashcardResponse> {
+  return apiRequest<ExamGradeFlashcardResponse>("/ai/flashcards/exam-grade", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Generate TRAP cards from user's past mistakes.
+ * Creates misconception-busting flashcards targeting failure points.
+ */
+export async function generateTrapCards(
+  data: TrapCardRequest
+): Promise<TrapCardResponse> {
+  return apiRequest<TrapCardResponse>("/ai/flashcards/trap-cards", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Generate exam simulation cards that mirror real test questions.
+ */
+export async function generateExamSimulation(
+  data: ExamSimulationRequest
+): Promise<ExamSimulationResponse> {
+  return apiRequest<ExamSimulationResponse>("/ai/flashcards/exam-simulation", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+// ============================================================================
 // STUDY PLAN
 // ============================================================================
 
@@ -287,6 +397,74 @@ export async function createStudyPlan(
   data: CreateStudyPlanRequest
 ): Promise<CreateStudyPlanResponse> {
   return apiRequest<CreateStudyPlanResponse>("/ai/plan/create", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+// ============================================================================
+// INTELLIGENT AI (Study Intelligence System)
+// ============================================================================
+
+export type AIMode = "plan" | "explain" | "quiz" | "flashcards" | "review" | "coach"
+
+export interface UserStudyContext {
+  focus_minutes_today?: number
+  target_focus_minutes?: number
+  habits_completed_today?: number
+  total_habits_today?: number
+  flashcards_due?: number
+  streak_days?: number
+  urgent_task_count?: number
+  overdue_tasks?: number
+  current_course?: string
+  current_topic?: string
+  days_until_exam?: number
+  recent_failures?: string[]
+}
+
+export interface IntelligentAskRequest {
+  message: string
+  mode?: AIMode
+  context?: UserStudyContext
+  use_memory?: boolean
+  skip_intervention?: boolean
+}
+
+export interface Intervention {
+  should_intervene: boolean
+  message: string
+  suggested_mode: AIMode
+  priority: "high" | "medium" | "low"
+}
+
+export interface ProactiveSuggestion {
+  id: string
+  message: string
+  action: string
+  priority: "urgent" | "high" | "normal"
+  icon: string
+}
+
+export interface IntelligentAskResponse {
+  mode: AIMode
+  answer: string
+  structured_output?: Record<string, any>
+  intervention?: Intervention
+  memory_used: boolean
+  memory_quality: "strong" | "weak" | "none"
+  chunks_used: number
+  suggestions: ProactiveSuggestion[]
+}
+
+/**
+ * Intelligent AI endpoint - Study Intelligence System
+ * Processes messages with mode-based routing, intervention logic, and structured outputs
+ */
+export async function intelligentAsk(
+  data: IntelligentAskRequest
+): Promise<IntelligentAskResponse> {
+  return apiRequest<IntelligentAskResponse>("/ai/intelligent-ask", {
     method: "POST",
     body: JSON.stringify(data),
   })

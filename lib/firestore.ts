@@ -40,6 +40,7 @@ export interface Material {
   createdAt: Date
 }
 
+// Legacy Flashcard interface (for backward compatibility)
 export interface Flashcard {
   id: string
   front: string
@@ -52,6 +53,74 @@ export interface Flashcard {
   nextReview?: Date
   reviewCount?: number
   easeFactor?: number
+}
+
+// ==================== EXAM-GRADE FLASHCARD TYPES ====================
+
+export type FlashcardType = "definition" | "why" | "how" | "compare" | "trap" | "example" | "exam"
+export type FlashcardDifficulty = "beginner" | "intermediate" | "advanced" | "expert"
+export type SRSRating = "again" | "hard" | "good" | "easy"
+
+export interface ExamGradeFlashcard {
+  id: string
+  type: FlashcardType
+  question: string
+  answer: string
+  difficulty: FlashcardDifficulty
+  topic: string
+  subtopic?: string
+  source: string
+  exam_relevance: number // 1-10
+  key_terms: string[]
+  mistake_prone: boolean
+  
+  // Firestore fields
+  deckId: string
+  userId: string
+  createdAt: Date
+  
+  // SRS fields
+  lastReviewed?: Date
+  nextReview?: Date
+  reviewCount: number
+  correctCount: number
+  incorrectCount: number
+  interval: number  // days until next review
+  easeFactor: number  // 1.3 to 2.5
+  consecutiveCorrect: number
+  
+  // Mistake tracking
+  mistakeHistory: MistakeRecord[]
+}
+
+export interface MistakeRecord {
+  date: Date
+  wrongAnswer?: string
+  correctAnswer: string
+  timeSpent?: number  // seconds
+}
+
+export interface ExamGradeFlashcardDeck {
+  id: string
+  name: string
+  subject: string
+  topic: string
+  cardCount: number
+  userId: string
+  createdAt: Date
+  
+  // Enhanced metadata
+  totalCards: number
+  masteredCards: number  // cards with interval > 21 days
+  dueCards: number
+  avgExamRelevance: number
+  cardTypeDistribution: Record<FlashcardType, number>
+  difficultyDistribution: Record<FlashcardDifficulty, number>
+  
+  // Study stats
+  lastStudied?: Date
+  totalReviews: number
+  avgAccuracy: number
 }
 
 export interface FlashcardDeck {

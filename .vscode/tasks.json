@@ -11,6 +11,11 @@
 				"$tsc"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "Cloudflare Tunnel",
+			"type": "shell",
+			"command": "cloudflared tunnel --url http://localhost:8000"
 		}
 	]
 }

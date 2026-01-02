@@ -9,7 +9,6 @@ import {
   type Task, type CalendarEvent, type Habit, type DailyStats, type Course
 } from "@/lib/firestore"
 import { PomodoroTimer } from "@/components/pomodoro-timer"
-import { Button } from "@/components/ui/button"
 import Layout from "@/components/Layout"
 import { TodayBlock } from "@/components/dashboard/TodayBlock"
 import { NextActions } from "@/components/dashboard/NextActions"
@@ -27,18 +26,10 @@ export default function DashboardPage() {
   const [habits, setHabits] = useState<Habit[]>([])
   const [dailyStats, setDailyStats] = useState<DailyStats | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
-  const [currentTime, setCurrentTime] = useState(new Date())
   const [showPomodoro, setShowPomodoro] = useState(false)
   const [focusTask, setFocusTask] = useState<Task | null>(null)
-  const [jarvisOpen, setJarvisOpen] = useState(false)
-  const jarvisRef = useRef<{ open: () => void } | null>(null)
 
   const { tasks: allTasks, toggleTask } = usePersistentTasks()
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000)
-    return () => clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -94,17 +85,17 @@ export default function DashboardPage() {
     t.priority === 'urgent'
   ).slice(0, 8)
 
-  // Handle task toggle with toast feedback
+  // Handle task toggle
   const handleTaskToggle = async (taskId: string, done: boolean) => {
     try {
       await toggleTask(taskId, done)
       toast.success(done ? "Task completed! 🎉" : "Task reopened")
-    } catch (error) {
+    } catch {
       toast.error("Failed to update task")
     }
   }
 
-  // Handle habit toggle with toast feedback
+  // Handle habit toggle
   const handleHabitToggle = async (habitId: string) => {
     if (!user) return
     try {
@@ -123,12 +114,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Open JARVIS for AI planning
-  const openJarvisForPlanning = () => {
-    setJarvisOpen(true)
-    // The JarvisAssistant component will handle its own state
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -140,36 +125,38 @@ export default function DashboardPage() {
   return (
     <Layout 
       title="Dashboard" 
-      subtitle="Your study command center"
+      subtitle="Your study command center – track progress, start sessions, and get AI-powered insights"
     >
-      {/* Combined Today Block - Tasks, Schedule, Habits */}
+      {/* Combined Today Block - Focus, Tasks, Flashcards, Habits */}
       <TodayBlock
         tasks={todaysTasks}
         events={upcomingEvents}
         habits={habits}
+        focusMinutes={dailyStats?.totalStudyMinutes || 0}
+        targetMinutes={120}
+        flashcardsDue={0}
         onStartFocus={() => setShowPomodoro(true)}
         onTaskClick={setFocusTask}
         onTaskToggle={handleTaskToggle}
         onHabitToggle={handleHabitToggle}
-        onOpenJarvis={openJarvisForPlanning}
       />
 
-      {/* Streak Tracker - Motivational Banner */}
-      <div className="mt-6">
+      {/* Streak Tracker - Compact motivational banner */}
+      <div className="mt-4">
         <StreakTracker />
       </div>
 
-      {/* Next Best Actions */}
-      <div className="mt-6">
+      {/* Next Best Action - Single AI recommendation */}
+      <div className="mt-4">
         <NextActions onStartFocus={() => setShowPomodoro(true)} />
       </div>
 
-      {/* AI System Health - Compact */}
-      <div className="mt-6">
+      {/* AI System Health - Minimal inline status */}
+      <div className="mt-4">
         <AISystemHealth />
       </div>
 
-      {/* JARVIS Dock - Single Instance */}
+      {/* JARVIS AI Coach - Single floating instance */}
       <JarvisAssistant
         context={{
           currentPage: 'dashboard',
