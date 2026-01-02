@@ -1,0 +1,71 @@
+{
+  "app": {
+    "[project]/app/_not-found/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/advanced-learning/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/analytics/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/calendar/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/dashboard/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/flashcards/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/groups/[id]/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/groups/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/habits/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/login/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/materials/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/planner/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/settings/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/signup/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ],
+    "[project]/app/support/page": [
+      "static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+      "static/media/68d403cf9f2c68c5-s.p.f9f15f61.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}

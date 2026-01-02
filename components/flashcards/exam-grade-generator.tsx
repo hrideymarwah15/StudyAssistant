@@ -39,7 +39,6 @@ import {
   type FlashcardType,
   type FlashcardDifficulty
 } from "@/lib/api"
-import { readFileContent } from "@/lib/gemini"
 import { getMistakeTracker } from "@/lib/mistake-tracker"
 
 // ==================== TYPES ====================
@@ -120,13 +119,35 @@ export function ExamGradeGenerator({
     setFileReadProgress("Reading file...")
     
     try {
-      const content = await readFileContent(file)
+      // Read file content using native FileReader
+      const content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const result = e.target?.result
+          if (typeof result === 'string') {
+            resolve(result)
+          } else {
+            reject(new Error("Failed to read file as text"))
+          }
+        }
+        reader.onerror = () => reject(new Error("Failed to read file"))
+        reader.readAsText(file)
+      })
+      
       setTextContent(content)
-      setFileReadProgress(`Loaded: ${file.name}`)
+      setFileReadProgress(`Loaded: ${file.name} (${(content.length / 1000).toFixed(1)}k chars)`)
       setSourceType("file")
+      
+      if (content.length > 500000) {
+        toast.warning("Large file detected", {
+          description: "Content will be truncated to fit AI limits (~500k chars max)"
+        })
+      }
     } catch (error) {
       setFileReadProgress("Error reading file")
-      toast.error("Failed to read file")
+      toast.error("Failed to read file", {
+        description: "Please make sure it's a text file (.txt, .md, etc.)"
+      })
     }
   }
   

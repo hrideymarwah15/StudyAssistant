@@ -1,15 +1,8 @@
 "use client"
 
-// Unified AI Client - Uses Groq (free tier) with Gemini fallback
-// Groq: 14,400 requests/day free, fastest inference
-// Gemini: 15 RPM / 1M tokens/day free
-
-const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
-const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || ""
-
-// Models
-const GROQ_MODEL = "llama-3.1-70b-versatile" // Fast, high quality
-const GEMINI_MODEL = "gemini-2.0-flash"
+// AI Client - Uses local backend API (Ollama-powered)
+// Backend uses Mixtral for reasoning and Qwen2.5 for flashcard generation
+// All AI processing happens on the local backend, not through external APIs
 
 export interface Message {
   role: "user" | "assistant" | "system"
@@ -25,6 +18,37 @@ export interface ChatOptions {
 export interface GeneratedFlashcard {
   front: string
   back: string
+}
+
+// Note: This file is kept for backward compatibility
+// All AI functionality now goes through the backend API
+// See lib/api.ts for the main API client
+
+export async function chat(
+  messages: Message[], 
+  options: ChatOptions = {}
+): Promise<string> {
+  throw new Error("Direct AI chat is disabled. Please use the backend API endpoints instead. All AI processing happens through Ollama on the backend for better performance and consistency.")
+}
+
+export async function generateFlashcards(
+  content: string,
+  topic: string,
+  count: number = 5,
+  difficulty: "easy" | "medium" | "hard" = "medium"
+): Promise<GeneratedFlashcard[]> {
+  throw new Error("This function is deprecated. Use generateExamGradeFlashcards from lib/api.ts instead, which uses the Ollama-powered backend.")
+}
+
+export async function getAssistantResponse(
+  userMessage: string,
+  context?: {
+    conversationHistory?: Message[]
+    userMaterials?: string[]
+    currentPage?: string
+  }
+): Promise<string> {
+  throw new Error("This function is deprecated. Use the backend API endpoints for AI assistance.")
 }
 
 // Sleep helper for retry delays
