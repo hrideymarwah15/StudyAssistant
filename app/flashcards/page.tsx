@@ -7,9 +7,8 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "@/lib/firebase"
-import { getFlashcardDecks, createFlashcardDeck, getFlashcards, addFlashcard, getMaterials, type FlashcardDeck, type Flashcard, type Material } from "@/lib/firestore"
+import { getFlashcardDecks, createFlashcardDeck, getFlashcards, addFlashcard, deleteFlashcard, getMaterials, type FlashcardDeck, type Flashcard, type Material } from "@/lib/firestore"
 import { generateFlashcards as generateFlashcardsOld } from "@/lib/ai-client"
-import { readFileContent } from "@/lib/gemini"
 import { generateSpacedRepetitionSchedule } from "@/lib/utils"
 import { toast } from "sonner"
 import { generateFlashcards as generateFlashcardsAI, APIError } from "@/lib/api"
@@ -127,8 +126,35 @@ export default function FlashcardsPage() {
       setCards(updatedCards)
       setShowAddCard(false)
       setNewCard({ front: "", back: "", difficulty: "medium" })
+      toast.success("Card added successfully")
     } catch (error) {
       console.error("Error adding card:", error)
+      toast.error("Failed to add card")
+    }
+  }
+
+  const handleDeleteCard = async (cardId: string) => {
+    if (!user || !selectedDeck) return
+    if (!confirm("Delete this flashcard?")) return
+    
+    try {
+      await deleteFlashcard(cardId)
+      const updatedCards = await getFlashcards(selectedDeck.id)
+      setCards(updatedCards)
+      
+      // Update deck in decks list
+      const updatedDecks = await getFlashcardDecks(user.uid)
+      setDecks(updatedDecks)
+      
+      // Adjust current index if needed
+      if (currentIndex >= updatedCards.length && updatedCards.length > 0) {
+        setCurrentIndex(updatedCards.length - 1)
+      }
+      
+      toast.success("Card deleted")
+    } catch (error) {
+      console.error("Error deleting card:", error)
+      toast.error("Failed to delete card")
     }
   }
 
@@ -141,12 +167,27 @@ export default function FlashcardsPage() {
     setFileReadProgress("Reading files...")
     
     try {
-      // Read all files and combine their content
+      // Read all files and combine their content using native FileReader
       let combinedContent = ""
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i]
         setFileReadProgress(`Reading file ${i + 1}/${fileArray.length}: ${file.name}`)
-        const content = await readFileContent(file)
+        
+        // Use native FileReader instead of Gemini
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            const result = e.target?.result
+            if (typeof result === 'string') {
+              resolve(result)
+            } else {
+              reject(new Error("Failed to read file as text"))
+            }
+          }
+          reader.onerror = () => reject(new Error("Failed to read file"))
+          reader.readAsText(file)
+        })
+        
         combinedContent += `\n\n--- Content from: ${file.name} ---\n\n${content}`
       }
       
@@ -539,11 +580,28 @@ export default function FlashcardsPage() {
                 <div className="mb-12">
                   <div
                     onClick={() => setIsFlipped(!isFlipped)}
-                    className="min-h-80 max-h-[500px] rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 border-2 border-primary/30 cursor-pointer flex items-center justify-center p-8 hover:shadow-lg transition-all overflow-hidden"
+                    className="min-h-80 max-h-[500px] rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 border-2 border-primary/30 cursor-pointer flex items-center justify-center p-8 hover:shadow-lg transition-all overflow-hidden relative"
                   >
+                    {/* Delete button in top-right corner */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteCard(cards[currentIndex].id)
+                      }}
+                      className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-all"
+                      title="Delete this card"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    
                     <div className="text-center w-full max-w-3xl">
                       <p className="text-sm text-slate-400 mb-4">
                         {isFlipped ? "Answer" : "Question"} ({currentIndex + 1}/{cards.length})
+                        {cards[currentIndex].difficulty && (
+                          <span className="ml-2 px-2 py-0.5 rounded text-xs bg-slate-700 capitalize">
+                            {cards[currentIndex].difficulty}
+                          </span>
+                        )}
                       </p>
                       <div className="max-h-60 overflow-y-auto px-4">
                         <p className="text-xl md:text-2xl lg:text-3xl font-serif font-bold text-slate-100 leading-relaxed">
@@ -776,11 +834,6 @@ export default function FlashcardsPage() {
                       <p className="text-xs text-muted-foreground">
                         Content loaded: {aiConfig.sourceContent.length.toLocaleString()} characters
                       </p>
-                      {aiConfig.sourceContent.length > 500000 && (
-                        <p className="text-xs text-yellow-500">
-                          ⚠️ Large content will be truncated to fit AI limits (~500k chars max)
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
@@ -799,9 +852,6 @@ export default function FlashcardsPage() {
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     {aiConfig.sourceContent.length.toLocaleString()} characters
-                    {aiConfig.sourceContent.length > 500000 && (
-                      <span className="text-yellow-500 ml-2">⚠️ Will be truncated</span>
-                    )}
                   </p>
                 </div>
               )}
@@ -856,9 +906,9 @@ export default function FlashcardsPage() {
                 </select>
               </div>
 
-              {/* Gemini API Notice */}
+              {/* AI Backend Notice */}
               <p className="text-xs text-muted-foreground text-center">
-                Powered by Google Gemini AI
+                Powered by Local Ollama AI (Mixtral + Qwen2.5)
               </p>
 
               <Button 

@@ -569,6 +569,29 @@ export async function addFlashcard(card: Omit<Flashcard, "id" | "createdAt">): P
   return docRef.id
 }
 
+export async function deleteFlashcard(cardId: string): Promise<void> {
+  // Get the card to find its deckId
+  const cardRef = doc(db, "flashcards", cardId)
+  const cardSnap = await getDoc(cardRef)
+  
+  if (cardSnap.exists()) {
+    const deckId = cardSnap.data().deckId
+    
+    // Delete the card
+    await deleteDoc(cardRef)
+    
+    // Update deck card count
+    if (deckId) {
+      const deckRef = doc(db, "flashcardDecks", deckId)
+      const deckSnap = await getDoc(deckRef)
+      if (deckSnap.exists()) {
+        const currentCount = deckSnap.data().cardCount || 0
+        await updateDoc(deckRef, { cardCount: Math.max(0, currentCount - 1) })
+      }
+    }
+  }
+}
+
 // Study Plans Functions
 export async function getStudyPlans(userId: string): Promise<StudyPlan[]> {
   const snapshot = await getDocs(collection(db, "studyPlans"))

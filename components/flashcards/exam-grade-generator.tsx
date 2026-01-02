@@ -138,11 +138,9 @@ export function ExamGradeGenerator({
       setFileReadProgress(`Loaded: ${file.name} (${(content.length / 1000).toFixed(1)}k chars)`)
       setSourceType("file")
       
-      if (content.length > 500000) {
-        toast.warning("Large file detected", {
-          description: "Content will be truncated to fit AI limits (~500k chars max)"
-        })
-      }
+      toast.success("File loaded successfully", {
+        description: `${file.name} - ${(content.length / 1000).toFixed(1)}k characters`
+      })
     } catch (error) {
       setFileReadProgress("Error reading file")
       toast.error("Failed to read file", {
