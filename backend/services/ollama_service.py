@@ -77,7 +77,7 @@ class OllamaService:
             response = requests.post(
                 OLLAMA_GENERATE_URL,
                 json=payload,
-                timeout=120  # 2 minutes for complex queries
+                timeout=300  # 5 minutes for complex queries
             )
             
             if response.status_code == 200:
