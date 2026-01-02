@@ -19,7 +19,7 @@ OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL}/api/chat"
 
 # Model configurations
 MIXTRAL_MODEL = "mixtral"  # Deep reasoning, complex analysis
-QWEN_MODEL = "qwen"        # Clean explanations, flashcard generation
+QWEN_MODEL = "qwen2.5:14b"  # Clean explanations, flashcard generation
 
 
 class OllamaService:
