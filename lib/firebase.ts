@@ -23,7 +23,11 @@ const isBrowser = typeof window !== "undefined"
 
 // Validate Firebase configuration
 const isConfigValid = firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId
-if (!isConfigValid && isBrowser) {
+
+// Skip Firebase initialization during build time (SSR without browser)
+if (!isConfigValid && !isBrowser) {
+  console.warn("⚠️ Firebase config incomplete during build - this is expected for static generation")
+} else if (!isConfigValid && isBrowser) {
   console.error("❌ Firebase configuration is incomplete. Please check your .env.local file.")
   console.error("Required variables: NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID")
   console.error("Current config:", {
@@ -33,10 +37,9 @@ if (!isConfigValid && isBrowser) {
   })
 }
 
-// Initialize Firebase only if it hasn't been initialized already
-// This prevents the "Firebase: Error (app/already-initialized)" error
-let app: FirebaseApp
-if (getApps().length === 0) {
+// Initialize Firebase only if config is valid and it hasn't been initialized already
+let app: FirebaseApp | null = null
+if (isConfigValid && getApps().length === 0) {
   try {
     app = initializeApp(firebaseConfig)
     if (isBrowser) {
@@ -44,34 +47,37 @@ if (getApps().length === 0) {
     }
   } catch (error: any) {
     console.error("Firebase initialization error:", error)
-    throw new Error("Failed to initialize Firebase. Please check your configuration.")
+    // Don't throw during build time
+    if (isBrowser) {
+      throw new Error("Failed to initialize Firebase. Please check your configuration.")
+    }
   }
-} else {
+} else if (getApps().length > 0) {
   app = getApps()[0]
 }
 
-// Initialize Firebase services with error handling
-export const auth = getAuth(app)
-export const db = getFirestore(app)
-export const storage = getStorage(app)
-export const realtimeDb = getDatabase(app)
+// Initialize Firebase services with error handling (only if app is initialized)
+export const auth = app ? getAuth(app) : null as any
+export const db = app ? getFirestore(app) : null as any
+export const storage = app ? getStorage(app) : null as any
+export const realtimeDb = app ? getDatabase(app) : null as any
 
 // Set auth persistence to LOCAL (persists even after browser is closed)
-if (isBrowser) {
+if (isBrowser && auth) {
   setPersistence(auth, browserLocalPersistence).catch((error) => {
     console.error("Failed to set auth persistence:", error)
   })
 }
 
 // Log auth state for debugging
-if (isBrowser) {
-  auth.onAuthStateChanged((user) => {
+if (isBrowser && auth) {
+  auth.onAuthStateChanged((user: any) => {
     if (user) {
       console.log("✓ User authenticated:", user.email, "UID:", user.uid)
     } else {
       console.log("○ No user signed in")
     }
-  }, (error) => {
+  }, (error: any) => {
     const authError = error as { code?: string; message?: string }
     console.error("✗ Auth state error:", authError.code, authError.message)
   })

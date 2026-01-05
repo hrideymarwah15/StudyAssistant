@@ -1,7 +1,13 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import Layout from "@/components/Layout"
-import { AdvancedLearningTools } from "@/components/advanced-learning/AdvancedLearningTools"
+
+// Dynamically import to avoid Firebase initialization during build
+const AdvancedLearningTools = dynamic(
+  () => import("@/components/advanced-learning/AdvancedLearningTools").then(mod => mod.AdvancedLearningTools),
+  { ssr: false }
+)
 
 export default function AdvancedLearningPage() {
   return (
