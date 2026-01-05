@@ -32,6 +32,11 @@ export default function DashboardPage() {
   const { tasks: allTasks, toggleTask } = usePersistentTasks()
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false)
+      return
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
       if (currentUser) {

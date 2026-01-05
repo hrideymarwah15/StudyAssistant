@@ -10,6 +10,11 @@ export function useAuth() {
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false)
+      return
+    }
+
     const unsubscribe = onAuthStateChanged(
       auth,
       (currentUser) => {
@@ -28,6 +33,7 @@ export function useAuth() {
   }, [])
 
   const logout = async () => {
+    if (!auth) return
     try {
       await signOut(auth)
       setUser(null)

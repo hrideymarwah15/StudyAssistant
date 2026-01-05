@@ -24,6 +24,10 @@ export default function Navigation() {
   const router = useRouter()
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false)
+      return
+    }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       setLoading(false)
@@ -32,6 +36,7 @@ export default function Navigation() {
   }, [])
 
   const handleLogout = async () => {
+    if (!auth) return
     try {
       await signOut(auth)
       router.push("/")
