@@ -1,5 +1,5 @@
 [build]
-  command = "npm install && npm run build"
+  command = "pnpm install && pnpm build"
   publish = ".next"
 
 [build.environment]
@@ -16,7 +16,6 @@
   to = "${NEXT_PUBLIC_API_URL}/:splat"
   status = 200
   force = true
-  headers = {Access-Control-Allow-Origin = "*"}
 
 # Headers for security and CORS
 [[headers]]
@@ -26,9 +25,6 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
-    Access-Control-Allow-Headers = "Content-Type, Authorization"
 
 # Development context
 [context.development]
