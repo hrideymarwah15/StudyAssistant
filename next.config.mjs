@@ -3,6 +3,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  experimental: {
+    optimizeCss: false,
+  },
 }
 
 export default nextConfig
