@@ -4,6 +4,18 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  # Firebase Configuration
+  NEXT_PUBLIC_FIREBASE_API_KEY = "AIzaSyC5i38Q_4QYx6RWs627_l5xdQ8IAY1b8I8"
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = "cnostruct.firebaseapp.com"
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID = "cnostruct"
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET = "cnostruct.firebasestorage.app"
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = "768135253274"
+  NEXT_PUBLIC_FIREBASE_APP_ID = "1:768135253274:web:9662ffb7911766ca5bf0a3"
+  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID = "G-J6J233XBCY"
+  NEXT_PUBLIC_FIREBASE_DATABASE_URL = "https://cnostruct.firebaseio.com"
+  # API Keys
+  NEXT_PUBLIC_GROQ_API_KEY = "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"
+  NEXT_PUBLIC_GEMINI_API_KEY = "AIzaSyDA8ReX3lUqucg23jKsWbbyviigD3jF6lU"
   # Set your production backend URL in Netlify dashboard environment variables
   # NEXT_PUBLIC_API_URL = "https://your-backend-url.onrender.com"
 
