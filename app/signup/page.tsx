@@ -39,6 +39,12 @@ export default function SignupPage() {
     setIsLoading(true)
     setError(null)
 
+    if (!auth || !db) {
+      setError("Authentication service is not available. Please refresh the page.")
+      setIsLoading(false)
+      return
+    }
+
     try {
       // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password)
@@ -84,12 +90,20 @@ export default function SignupPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
     setError(null)
+
+    if (!auth) {
+      setError("Authentication service is not available. Please refresh the page.")
+      setGoogleLoading(false)
+      return
+    }
+
     try {
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
       if (user) {
         // Try to save user data to Firestore, but don't block login if it fails
         try {
+          if (!db) throw new Error("Firestore not available")
           const userRef = doc(db, "users", user.uid)
           const userDoc = await getDoc(userRef)
           if (!userDoc.exists()) {
