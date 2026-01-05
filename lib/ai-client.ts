@@ -4,6 +4,12 @@
 // Backend uses Mixtral for reasoning and Qwen2.5 for flashcard generation
 // All AI processing happens on the local backend, not through external APIs
 
+// API Keys from environment
+const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || ""
+const GROQ_MODEL = "mixtral-8x7b-32768"
+const GEMINI_MODEL = "gemini-1.5-flash"
+
 export interface Message {
   role: "user" | "assistant" | "system"
   content: string
@@ -20,36 +26,8 @@ export interface GeneratedFlashcard {
   back: string
 }
 
-// Note: This file is kept for backward compatibility
-// All AI functionality now goes through the backend API
-// See lib/api.ts for the main API client
-
-export async function chat(
-  messages: Message[], 
-  options: ChatOptions = {}
-): Promise<string> {
-  throw new Error("Direct AI chat is disabled. Please use the backend API endpoints instead. All AI processing happens through Ollama on the backend for better performance and consistency.")
-}
-
-export async function generateFlashcards(
-  content: string,
-  topic: string,
-  count: number = 5,
-  difficulty: "easy" | "medium" | "hard" = "medium"
-): Promise<GeneratedFlashcard[]> {
-  throw new Error("This function is deprecated. Use generateExamGradeFlashcards from lib/api.ts instead, which uses the Ollama-powered backend.")
-}
-
-export async function getAssistantResponse(
-  userMessage: string,
-  context?: {
-    conversationHistory?: Message[]
-    userMaterials?: string[]
-    currentPage?: string
-  }
-): Promise<string> {
-  throw new Error("This function is deprecated. Use the backend API endpoints for AI assistance.")
-}
+// Note: This file contains AI client functions that work with external APIs
+// For backend-powered AI (recommended), see lib/api.ts
 
 // Sleep helper for retry delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
