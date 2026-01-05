@@ -26,7 +26,7 @@ const isConfigValid = firebaseConfig.apiKey && firebaseConfig.authDomain && fire
 
 // Skip Firebase initialization during build time (SSR without browser)
 if (!isConfigValid && !isBrowser) {
-  console.warn("⚠️ Firebase config incomplete during build - this is expected for static generation")
+  // Build-time: Firebase not needed for static generation
 } else if (!isConfigValid && isBrowser) {
   console.error("❌ Firebase configuration is incomplete. Please check your .env.local file.")
   console.error("Required variables: NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID")
