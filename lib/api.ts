@@ -1,13 +1,20 @@
 /**
  * API Client for StudyPal AI Backend
- * Connects to the FastAPI backend at localhost:8000
+ * Connects to the FastAPI backend or falls back to Groq API
  */
 
 // Get API URL from environment or use localhost
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+// Fallback to Groq if backend unavailable
+const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || ""
+const GROQ_MODEL = "mixtral-8x7b-32768"
+
 // Request timeout in milliseconds
 const REQUEST_TIMEOUT = 200000 // 200 seconds for AI operations
+
+// Track if backend is available
+let backendAvailable: boolean | null = null
 
 /**
  * Custom error for API failures
@@ -512,3 +519,52 @@ export async function getServiceStatus(): Promise<{
     }
   }
 }
+
+// ============================================================================
+// GROQ FALLBACK (When backend unavailable)
+// ============================================================================
+
+export async function askAIWithFallback(question: string): Promise<string> {
+  // Try backend first
+  try {
+    const response = await askAI({ question })
+    return response.answer
+  } catch {
+    // Fallback to Groq
+    if (!GROQ_API_KEY) {
+      throw new Error("AI service unavailable. Please set up the backend or Groq API key.")
+    }
+    
+    return askGroqDirect(question)
+  }
+}
+
+async function askGroqDirect(question: string): Promise<string> {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: question,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2048,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error?.message || "Groq API request failed")
+  }
+
+  const data = await response.json()
+  return data.choices[0]?.message?.content || "No response received"
+}
+

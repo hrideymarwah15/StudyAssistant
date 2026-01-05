@@ -21,7 +21,8 @@ import {
   type DailyStats
 } from "@/lib/firestore"
 import { 
-  askAI, 
+  askAI,
+  askAIWithFallback,
   generateFlashcards, 
   createStudyPlan, 
   isBackendAvailable, 
@@ -546,23 +547,31 @@ export function JarvisAssistant({ context }: JarvisAssistantProps = {}) {
             addAssistantMessage(`📋 ${result.days}-day plan for ${result.subject}:\n\n${result.plan}${result.materials_used > 0 ? `\n\n_Used ${result.materials_used} of your materials._` : ""}`)
             return
           } else {
-            // General AI question
-            const result = await askAI({
-              question: messageText,
-              use_memory: true,
-              top_k: 5
-            })
-            
-            let response = result.answer
-            if (result.context_used && result.sources_count > 0) {
-              response += `\n\n💡 _Based on ${result.sources_count} source${result.sources_count > 1 ? 's' : ''} from your materials_`
+            // General AI question - try backend, fallback to Groq
+            try {
+              const result = await askAI({
+                question: messageText,
+                use_memory: true,
+                top_k: 5
+              })
+              
+              let response = result.answer
+              if (result.context_used && result.sources_count > 0) {
+                response += `\n\n💡 _Based on ${result.sources_count} source${result.sources_count > 1 ? 's' : ''} from your materials_`
+              }
+              
+              addAssistantMessage(response)
+              return
+            } catch (backendError: any) {
+              // Fallback to Groq if backend fails
+              console.warn("Backend unavailable, using Groq fallback:", backendError.message)
+              const response = await askAIWithFallback(messageText)
+              addAssistantMessage(response)
+              return
             }
-            
-            addAssistantMessage(response)
-            return
           }
         } catch (error: any) {
-          console.error("Backend AI error:", error)
+          console.error("AI error:", error)
           toast.dismiss("ai-thinking")
           toast.dismiss("flashcards")
           toast.dismiss("studyplan")
